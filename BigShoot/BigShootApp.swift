@@ -1,32 +1,39 @@
-//
-//  BigShootApp.swift
-//  BigShoot
-//
-//  Created by Gp. on 10/21/26.
-//
-
 import SwiftUI
 import SwiftData
 
 @main
 struct BigShootApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    private let container: ModelContainer
 
+    init() {
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            container = try StudioStore.makeContainer()
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            fatalError("Could not create the BigShoot store: \(error)")
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            StudioRootView()
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(container)
+        .defaultSize(width: 1280, height: 840)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Invoice") {
+                    NotificationCenter.default.post(name: .bigShootNewInvoice, object: nil)
+                }
+                .keyboardShortcut("n")
+                Button("Import ShootQ…") {
+                    NotificationCenter.default.post(name: .bigShootImport, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                Button("Export Books…") {
+                    NotificationCenter.default.post(name: .bigShootExport, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
+        }
     }
 }

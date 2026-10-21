@@ -1,0 +1,43 @@
+import Foundation
+import SwiftData
+
+@Model
+final class Job {
+    #Unique<Job>([\.shootqID])
+
+    var shootqID: String?
+    var name: String
+    var eventDate: Date?
+    var jobType: String
+    var status: String
+    var archived: Bool
+
+    var contact: Contact?
+
+    @Relationship(deleteRule: .nullify, inverse: \Invoice.job)
+    var invoices: [Invoice]
+
+    init(
+        shootqID: String? = nil,
+        name: String = "",
+        eventDate: Date? = nil,
+        jobType: String = "",
+        status: String = "",
+        archived: Bool = false,
+        contact: Contact? = nil
+    ) {
+        self.shootqID = shootqID
+        self.name = name
+        self.eventDate = eventDate
+        self.jobType = jobType
+        self.status = status
+        self.archived = archived
+        self.contact = contact
+        self.invoices = []
+    }
+
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Untitled job" : trimmed
+    }
+}
