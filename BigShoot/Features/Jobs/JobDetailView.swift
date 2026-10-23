@@ -75,20 +75,55 @@ struct JobEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     let contacts: [Contact]
+    let job: Job?
+    var onSave: (Job) -> Void
 
     @State private var name = ""
-    @State private var jobType = "Wedding"
+    @State private var types = JobTypeCatalog()
+    @State private var jobType = JobTypeCatalog.commercial
+    @State private var typeTag = JobTypeMenuTag.type(JobTypeCatalog.commercial)
+    @State private var showAddType = false
+    @State private var newTypeName = ""
     @State private var eventDate = Date.now
     @State private var hasDate = true
     @State private var contact: Contact?
+    @FocusState private var nameFocused: Bool
+
+    init(contacts: [Contact], contact: Contact? = nil, job: Job? = nil, onSave: @escaping (Job) -> Void = { _ in }) {
+        self.contacts = contacts
+        self.job = job
+        self.onSave = onSave
+        let catalog = JobTypeCatalog()
+        let storedType = job?.jobType.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let resolvedType = catalog.names.first { $0.caseInsensitiveCompare(storedType) == .orderedSame }
+            ?? (storedType.isEmpty ? JobTypeCatalog.commercial : storedType)
+        _types = State(initialValue: catalog)
+        _name = State(initialValue: job?.name ?? "")
+        _jobType = State(initialValue: resolvedType)
+        _typeTag = State(initialValue: .type(resolvedType))
+        _hasDate = State(initialValue: job == nil || job?.eventDate != nil)
+        _eventDate = State(initialValue: job?.eventDate ?? .now)
+        _contact = State(initialValue: job?.contact ?? contact)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New job")
+            Text(job == nil ? "New job" : "Edit job")
                 .font(StudioDesign.displayTitle)
             Form {
                 TextField("Name", text: $name)
-                TextField("Type", text: $jobType)
+                    .focused($nameFocused)
+                Picker("Type", selection: $typeTag) {
+                    Label("Add Type", systemImage: "plus").tag(JobTypeMenuTag.add)
+                    Divider()
+                    ForEach(typeChoices, id: \.self) { name in
+                        Text(name).tag(JobTypeMenuTag.type(name))
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: typeTag) { _, tag in
+                    handleTypeTag(tag)
+                }
                 Toggle("Event date", isOn: $hasDate)
                 if hasDate {
                     DatePicker("Date", selection: $eventDate, displayedComponents: .date)
@@ -106,20 +141,76 @@ struct JobEditorSheet: View {
         }
         .padding(24)
         .frame(width: 520)
+        .alert("Add Type", isPresented: $showAddType) {
+            TextField("Type", text: $newTypeName)
+            Button("Add", action: commitNewType)
+            Button("Cancel", role: .cancel) { newTypeName = "" }
+        }
+        .onAppear { nameFocused = true }
+    }
+
+    private var typeChoices: [String] {
+        var names = types.names
+        let current = jobType.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !current.isEmpty else { return names }
+        if !names.contains(where: { $0.caseInsensitiveCompare(current) == .orderedSame }) {
+            names.append(current)
+        }
+        return names
+    }
+
+    private func handleTypeTag(_ tag: JobTypeMenuTag) {
+        switch tag {
+        case .add:
+            showAddType = true
+            let revert = JobTypeMenuTag.type(jobType)
+            Task { @MainActor in
+                if typeTag == .add {
+                    typeTag = revert
+                }
+            }
+        case .type(let name):
+            jobType = name
+        }
+    }
+
+    private func commitNewType() {
+        defer { newTypeName = "" }
+        guard let name = types.add(newTypeName) else { return }
+        jobType = name
+        typeTag = .type(name)
     }
 
     private func save() {
-        let job = Job(
-            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-            eventDate: hasDate ? eventDate : nil,
-            jobType: jobType.trimmingCharacters(in: .whitespacesAndNewlines),
-            status: "active",
-            contact: contact
-        )
-        modelContext.insert(job)
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedType = jobType.trimmingCharacters(in: .whitespacesAndNewlines)
+        let date = hasDate ? eventDate : nil
+        let saved: Job
+        if let job {
+            job.name = trimmedName
+            job.jobType = trimmedType
+            job.eventDate = date
+            job.contact = contact
+            saved = job
+        } else {
+            saved = Job(
+                name: trimmedName,
+                eventDate: date,
+                jobType: trimmedType,
+                status: "active",
+                contact: contact
+            )
+            modelContext.insert(saved)
+        }
         try? modelContext.save()
+        onSave(saved)
         dismiss()
     }
+}
+
+private enum JobTypeMenuTag: Hashable {
+    case add
+    case type(String)
 }
 
 struct ContactPickerField: View {

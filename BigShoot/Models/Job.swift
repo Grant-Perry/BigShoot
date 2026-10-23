@@ -40,4 +40,10 @@ final class Job {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Untitled job" : trimmed
     }
+
+    var invoicesWithOpenBalance: [Invoice] {
+        invoices
+            .filter(\.holdsOpenBalance)
+            .sorted { $0.invoiceDate > $1.invoiceDate }
+    }
 }

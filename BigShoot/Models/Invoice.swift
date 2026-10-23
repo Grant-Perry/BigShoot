@@ -12,6 +12,12 @@ final class Invoice {
     var paidDate: Date?
     var statusRaw: String
     var tax: Decimal
+    /// Fraction snapped onto this invoice, such as 0.066 for 6.6%. Nil or zero means no rate was applied.
+    var taxRate: Decimal?
+    /// Name of the schedule used when the rate was applied. Empty when the rate was typed for this invoice only.
+    var taxScheduleName: String?
+    /// Nil on invoices written before this switch. Those charge tax only when they already have a rate or a tax amount.
+    var invoiceTaxable: Bool?
     var discount: Decimal
     var shipping: Decimal
     var total: Decimal
@@ -25,6 +31,8 @@ final class Invoice {
 
     var contact: Contact?
     var job: Job?
+    /// Studio that issued this invoice. New invoices take the primary studio and keep it.
+    var studio: StudioBrand?
 
     @Relationship(deleteRule: .cascade, inverse: \InvoiceLine.invoice)
     var lines: [InvoiceLine]
@@ -43,6 +51,9 @@ final class Invoice {
         paidDate: Date? = nil,
         status: InvoiceStatus = .draft,
         tax: Decimal = 0,
+        taxRate: Decimal = 0,
+        taxScheduleName: String = "",
+        invoiceTaxable: Bool? = nil,
         discount: Decimal = 0,
         shipping: Decimal = 0,
         total: Decimal = 0,
@@ -61,6 +72,9 @@ final class Invoice {
         self.paidDate = paidDate
         self.statusRaw = status.rawValue
         self.tax = tax
+        self.taxRate = taxRate
+        self.taxScheduleName = taxScheduleName
+        self.invoiceTaxable = invoiceTaxable
         self.discount = discount
         self.shipping = shipping
         self.total = total
@@ -85,10 +99,28 @@ final class Invoice {
         InvoiceMath.displayStatus(stored: status, balance: balance, dueDate: dueDate)
     }
 
+    /// Still on the books as money to collect. Paid and void invoices are settled.
+    var holdsOpenBalance: Bool {
+        InvoiceMath.holdsOpenBalance(stored: status, balance: balance, dueDate: dueDate)
+    }
+
     var displayNumber: String {
         let trimmed = number.trimmingCharacters(in: .whitespacesAndNewlines)
-        if status == .draft || trimmed.isEmpty { return "Draft" }
-        return trimmed
+        if !trimmed.isEmpty { return trimmed }
+        // Newer ShootQ invoices leave `number` empty and cite the invoice by its id.
+        if let shootqID {
+            let id = shootqID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty { return id }
+        }
+        return "Draft"
+    }
+
+    /// Due date, plus days left or past while the invoice is still open.
+    var dueSummary: String? {
+        guard let dueDate else { return nil }
+        let day = StudioDay.string(dueDate)
+        guard displayStatus != .paid, displayStatus != .void else { return day }
+        return "\(day) · \(InvoiceMath.dueCountdown(until: dueDate))"
     }
 
     var clientName: String {
@@ -96,13 +128,20 @@ final class Invoice {
         return contact?.displayName ?? "No client"
     }
 
-    /// Imported paid and void invoices stay read-only. Open imported invoices can still take a payment.
+    /// Paid, void, and unsent drafts cannot take a payment.
     var canRecordPayment: Bool {
         status != .void && status != .draft && balance > 0
     }
 
+    /// Paid and void invoices stay read-only. Open invoices, including ShootQ imports, can be edited.
+    /// Whether this invoice should add tax. Older invoices stay on when they already carry tax.
+    var appliesTax: Bool {
+        if let invoiceTaxable { return invoiceTaxable }
+        return tax > 0 || (taxRate ?? 0) > 0
+    }
+
     var canEditLines: Bool {
-        !isImported && status != .void && displayStatus != .paid
+        status != .void && displayStatus != .paid
     }
 
     var sortedLines: [InvoiceLine] {

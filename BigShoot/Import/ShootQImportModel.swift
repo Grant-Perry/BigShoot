@@ -71,6 +71,11 @@ final class ShootQImportModel {
             summary = result
             UserDefaults.standard.set(true, forKey: Self.completedKey)
             Self.saveBookmark(folder)
+            do {
+                try StudioBrandDirectory.prepare(in: context)
+            } catch {
+                DebugPrint(mode: .error, "Could not attach imported invoices to a studio: \(error.localizedDescription)")
+            }
         } catch {
             errorMessage = error.localizedDescription
             DebugPrint(mode: .error, "ShootQ import failed: \(error.localizedDescription)")

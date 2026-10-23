@@ -1,10 +1,33 @@
 import Foundation
+import PDFKit
 import SwiftData
 import Testing
 @testable import BigShoot
 
 @MainActor
 struct BigShootTests {
+    @Test func jobTypeCatalogStartsWithCommercialAndWeddings() {
+        let catalog = JobTypeCatalog(defaults: isolatedDefaults("empty"))
+        #expect(catalog.names == ["Commercial", "Weddings"])
+    }
+
+    @Test func bannerTextFallsBackWhenBlank() {
+        #expect(StudioBanner.resolved("BigShoot") == "BigShoot")
+        #expect(StudioBanner.resolved("  Studio books  ") == "Studio books")
+        #expect(StudioBanner.resolved("   ") == StudioBanner.fallback)
+        #expect(StudioBanner.resolved("") == "BigShoot")
+    }
+
+    @Test func jobTypeCatalogRemembersAddedTypes() {
+        let defaults = isolatedDefaults("added")
+        let catalog = JobTypeCatalog(defaults: defaults)
+        #expect(catalog.add("  Portrait  ") == "Portrait")
+        #expect(catalog.add("weddings") == "Weddings")
+        #expect(catalog.add("   ") == nil)
+        let reloaded = JobTypeCatalog(defaults: defaults)
+        #expect(reloaded.names == ["Commercial", "Weddings", "Portrait"])
+    }
+
     @Test func overdueWhenBalanceRemainsPastDue() {
         let due = Date(timeIntervalSince1970: 0)
         let now = Date(timeIntervalSince1970: 86_400 * 30)
@@ -27,8 +50,82 @@ struct BigShootTests {
         #expect(status == .draft)
     }
 
+    @Test func invoiceListDefaultsToOpenAndSplitsOverdue() throws {
+        let past = Date(timeIntervalSince1970: 0)
+        let future = Date.now.addingTimeInterval(86_400 * 30)
+        let schema = Schema(versionedSchema: StudioSchemaV2.self)
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+
+        let pending = Invoice(number: "1", dueDate: future, status: .pending, balance: 100)
+        let overdue = Invoice(number: "2", dueDate: past, status: .pending, balance: 40)
+        let draft = Invoice(number: "3", dueDate: past, status: .draft, balance: 10)
+        let paid = Invoice(number: "4", dueDate: past, status: .paid, balance: 0)
+        let voided = Invoice(number: "5", dueDate: past, status: .void, balance: 25)
+        for invoice in [pending, overdue, draft, paid, voided] {
+            context.insert(invoice)
+        }
+
+        #expect(InvoiceScope.open.includes(pending))
+        #expect(InvoiceScope.open.includes(overdue))
+        #expect(InvoiceScope.open.includes(draft))
+        #expect(!InvoiceScope.open.includes(paid))
+        #expect(!InvoiceScope.open.includes(voided))
+
+        #expect(overdue.displayStatus == .overdue)
+        #expect(InvoiceScope.overdue.includes(overdue))
+        #expect(!InvoiceScope.overdue.includes(pending))
+        #expect(!InvoiceScope.overdue.includes(draft))
+        #expect(!InvoiceScope.overdue.includes(paid))
+        #expect(!InvoiceScope.overdue.includes(voided))
+
+        #expect(InvoiceScope.allCases.map(\.title) == ["Open", "Overdue", "All"])
+        #expect(InvoiceScope.all.includes(paid))
+        #expect(InvoiceScope.all.includes(voided))
+    }
+
+    @Test func openBalanceIsOnlyUnsettledInvoices() {
+        let past = Date(timeIntervalSince1970: 0)
+        let now = Date(timeIntervalSince1970: 86_400 * 30)
+        #expect(InvoiceMath.holdsOpenBalance(stored: .pending, balance: 100, dueDate: .now))
+        #expect(InvoiceMath.holdsOpenBalance(stored: .draft, balance: 0, dueDate: nil))
+        #expect(InvoiceMath.holdsOpenBalance(stored: .pending, balance: 10, dueDate: past, now: now))
+        #expect(!InvoiceMath.holdsOpenBalance(stored: .pending, balance: 0, dueDate: .now))
+        #expect(!InvoiceMath.holdsOpenBalance(stored: .void, balance: 50, dueDate: past))
+    }
+
     @Test func nextNumberClearsTheHighestImported() {
         #expect(InvoiceMath.nextNumber(among: ["84409", "", "12"]) == "84410")
+    }
+
+    @Test func countdownCountsDaysLeftAndPast() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let ahead = calendar.date(byAdding: .day, value: 28, to: today)!
+        let behind = calendar.date(byAdding: .day, value: -98, to: today)!
+        #expect(InvoiceMath.dueCountdown(until: ahead, now: today) == "28 days left")
+        #expect(InvoiceMath.dueCountdown(until: today, now: today) == "Due today")
+        #expect(InvoiceMath.dueCountdown(until: behind, now: today) == "98 days past")
+    }
+
+    @Test func blankShootQNumberShowsTheInvoiceID() throws {
+        let schema = Schema(versionedSchema: StudioSchemaV2.self)
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+
+        let blank = Invoice(shootqID: "1234867", number: "", status: .pending)
+        let numbered = Invoice(shootqID: "711118", number: "1849771", status: .paid)
+        let draft = Invoice(status: .draft)
+        context.insert(blank)
+        context.insert(numbered)
+        context.insert(draft)
+
+        #expect(blank.displayNumber == "1234867")
+        #expect(numbered.displayNumber == "1849771")
+        #expect(draft.displayNumber == "Draft")
+        #expect(blank.dueSummary == nil)
     }
 
     @Test func lineTotalMultiplies() {
@@ -85,7 +182,7 @@ struct BigShootTests {
         let storeURL = folder.appendingPathComponent("BigShoot.store")
         try writeVersion1Invoice(at: storeURL)
 
-        let schema = Schema(versionedSchema: StudioSchemaV2.self)
+        let schema = Schema(versionedSchema: StudioSchemaV3.self)
         let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: schema,
@@ -142,9 +239,490 @@ struct BigShootTests {
         #expect(remaining.isEmpty)
     }
 
+    @Test func netDaysCountsFromTheShootAndDefaultsTo45() {
+        let calendar = Calendar.current
+        let shoot = calendar.date(from: DateComponents(year: 2026, month: 10, day: 20))!
+        let draft = InvoiceDraftModel()
+        #expect(draft.netDays == 45)
+
+        draft.invoiceDate = calendar.date(from: DateComponents(year: 2026, month: 10, day: 22))!
+        draft.job = Job(name: "Jeremy", eventDate: shoot)
+        draft.netDays = 45
+        draft.applyNetDays()
+        let fortyFiveAfterShoot = calendar.date(from: DateComponents(year: 2026, month: 12, day: 4))!
+        #expect(calendar.isDate(draft.dueDate, inSameDayAs: fortyFiveAfterShoot))
+
+        draft.dueDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 4))!
+        draft.syncNetDaysFromDueDate()
+        #expect(draft.netDays == 15)
+
+        draft.job = nil
+        draft.netDays = 7
+        draft.applyNetDays()
+        let sevenAfterInvoice = calendar.date(from: DateComponents(year: 2026, month: 10, day: 29))!
+        #expect(calendar.isDate(draft.dueDate, inSameDayAs: sevenAfterInvoice))
+    }
+
+    @Test func openInvoicesCanBeEditedIncludingImports() {
+        let imported = Invoice(status: .pending, balance: 10, isImported: true)
+        let local = Invoice(status: .draft, balance: 10, isImported: false)
+        let paid = Invoice(status: .paid, balance: 0, isImported: true)
+        let settled = Invoice(status: .pending, balance: 0, isImported: true)
+        let voided = Invoice(status: .void, balance: 40, isImported: true)
+        #expect(imported.canEditLines)
+        #expect(local.canEditLines)
+        #expect(!paid.canEditLines)
+        #expect(!settled.canEditLines)
+        #expect(!voided.canEditLines)
+    }
+
+    @Test func editingAnImportedInvoiceKeepsItsIdentityAndPayments() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let invoice = Invoice(
+            shootqID: "1234867",
+            number: "",
+            status: .pending,
+            discount: Decimal(string: "25.00")!,
+            shipping: Decimal(string: "10.00")!,
+            total: Decimal(string: "10157.30")!,
+            amountPaid: Decimal(string: "100.00")!,
+            balance: Decimal(string: "10057.30")!,
+            billToName: "Snow Companies",
+            isImported: true
+        )
+        context.insert(invoice)
+        let line = InvoiceLine(
+            name: "Photography Day Rate",
+            quantity: 2,
+            unitPrice: Decimal(string: "4750.00")!,
+            position: 0
+        )
+        line.invoice = invoice
+        context.insert(line)
+        try context.save()
+
+        let draft = InvoiceDraftModel()
+        draft.load(invoice)
+        #expect(draft.editingSentInvoice)
+        draft.lines[0].unitPrice = Decimal(string: "4800.00")!
+        _ = try draft.save(in: context, markSent: false)
+
+        #expect(invoice.displayNumber == "1234867")
+        #expect(invoice.isImported)
+        #expect(invoice.status == .pending)
+        #expect(invoice.amountPaid == Decimal(string: "100.00")!)
+        #expect(invoice.discount == Decimal(string: "25.00")!)
+        #expect(invoice.shipping == Decimal(string: "10.00")!)
+        #expect(invoice.total == Decimal(string: "9585.00")!)
+        #expect(invoice.balance == Decimal(string: "9485.00")!)
+        let events = try context.fetch(FetchDescriptor<BooksEvent>())
+        let edited = try #require(events.first { $0.kind == .edited })
+        #expect(edited.invoiceKey == "1234867")
+        #expect(edited.detail.contains("Total \(StudioMoney.string(Decimal(string: "10157.30")!)) → \(StudioMoney.string(Decimal(string: "9585.00")!))"))
+        #expect(edited.detail.contains("Photography Day Rate"))
+        #expect(edited.detail.contains(StudioMoney.string(Decimal(string: "4750.00")!)))
+        #expect(edited.detail.contains(StudioMoney.string(Decimal(string: "4800.00")!)))
+        #expect(!edited.detail.contains("Discount"))
+    }
+
+    @Test func editTrailSaysWhenNothingChanged() {
+        let snapshot = BooksTrail.EditSnapshot(
+            clientName: "Snow Companies",
+            jobName: "Joseph",
+            invoiceDate: Date(timeIntervalSince1970: 1_700_000_000),
+            dueDate: nil,
+            tax: 0,
+            discount: 0,
+            shipping: 0,
+            note: "",
+            total: 100,
+            balance: 100,
+            lines: [
+                BooksTrail.EditSnapshot.Line(name: "Day Rate", quantity: 1, unitPrice: 100, detail: "")
+            ]
+        )
+        let detail = BooksTrail.editDetail(number: "1234867", before: snapshot, after: snapshot)
+        #expect(detail == "Edited 1234867. Nothing on the invoice changed.")
+    }
+
+    @Test func taxRateUnderstandsPercentAndFraction() {
+        #expect(TaxRateInput.fraction(from: "6.6") == Decimal(string: "0.066"))
+        #expect(TaxRateInput.fraction(from: "6.6%") == Decimal(string: "0.066"))
+        #expect(TaxRateInput.fraction(from: "0.066") == Decimal(string: "0.066"))
+        #expect(TaxRateInput.fraction(from: ".066") == Decimal(string: "0.066"))
+        #expect(TaxRateInput.fraction(from: "1") == Decimal(string: "0.01"))
+        #expect(TaxRateInput.fraction(from: "") == 0)
+        #expect(TaxRateInput.percentText(for: Decimal(string: "0.066")!) == "6.6")
+    }
+
+    @Test func taxAmountUsesOnlyTaxableLinesAndJoinsTheBalance() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let invoice = Invoice(
+            status: .pending,
+            tax: 40,
+            amountPaid: 100,
+            billToName: "Snow Companies"
+        )
+        context.insert(invoice)
+        let day = InvoiceLine(name: "Day Rate", quantity: 1, unitPrice: 1000, taxable: false)
+        let print = InvoiceLine(name: "Print", quantity: 1, unitPrice: 50, position: 1, taxable: false)
+        day.invoice = invoice
+        print.invoice = invoice
+        context.insert(day)
+        context.insert(print)
+        try context.save()
+
+        let draft = InvoiceDraftModel()
+        draft.load(invoice)
+        #expect(draft.tax == 40)
+
+        draft.lines[0].taxable = true
+        #expect(draft.tax == 40)
+
+        draft.taxRateText = "6.6"
+        draft.commitTaxRate(schedules: [])
+        #expect(draft.invoiceTaxable)
+        #expect(draft.taxRate == Decimal(string: "0.066"))
+        #expect(draft.tax == Decimal(string: "66.00"))
+        #expect(draft.total == Decimal(string: "1116.00"))
+
+        draft.invoiceTaxable = false
+        #expect(draft.tax == 0)
+        #expect(draft.total == Decimal(string: "1050.00"))
+        draft.invoiceTaxable = true
+
+        _ = try draft.save(in: context, markSent: false)
+        #expect(invoice.tax == Decimal(string: "66.00"))
+        #expect(invoice.taxRate == Decimal(string: "0.066"))
+        #expect(invoice.total == Decimal(string: "1116.00"))
+        #expect(invoice.balance == Decimal(string: "1016.00"))
+        #expect(invoice.lines.first { $0.name == "Day Rate" }?.taxable == true)
+        #expect(invoice.lines.first { $0.name == "Print" }?.taxable == false)
+    }
+
+    @Test func catalogEditsStayOffInvoicesAlreadyWritten() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let item = CatalogItem(name: "Day Rate", defaultPrice: 5000, taxable: false)
+        context.insert(item)
+        let invoice = Invoice(status: .pending, total: 5000, balance: 5000, billToName: "Snow Companies")
+        context.insert(invoice)
+        let line = InvoiceLine(name: "Day Rate", quantity: 1, unitPrice: 5000, taxable: false)
+        line.invoice = invoice
+        line.catalogItem = item
+        context.insert(line)
+        try context.save()
+
+        item.defaultPrice = 7500
+        item.taxable = true
+        item.detail = "New wording"
+        try context.save()
+
+        #expect(line.unitPrice == 5000)
+        #expect(line.taxable == false)
+        #expect(line.name == "Day Rate")
+        #expect(line.detail == "")
+
+        let draft = InvoiceDraftModel()
+        draft.addCatalogItem(item)
+        #expect(draft.lines[0].unitPrice == 7500)
+        #expect(draft.lines[0].taxable)
+        item.defaultPrice = 9000
+        item.taxable = false
+        #expect(draft.lines[0].unitPrice == 7500)
+        #expect(draft.lines[0].taxable)
+    }
+
+    @Test func seededStudioClaimsExistingInvoicesAndStaysPut() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let invoice = Invoice(number: "1849772", status: .pending, billToName: "Snow Companies")
+        context.insert(invoice)
+        try StudioBrandDirectory.prepare(in: context)
+
+        let studios = try context.fetch(FetchDescriptor<StudioBrand>())
+        let primary = try #require(studios.first)
+        #expect(studios.count == 1)
+        #expect(primary.name == StudioBrand.defaultName)
+        #expect(primary.isPrimary)
+        #expect(invoice.studio?.persistentModelID == primary.persistentModelID)
+
+        let second = StudioBrand(name: "North Studio", email: "north@example.com", phone: "804-555-0100", address: "Richmond, VA")
+        context.insert(second)
+        try context.save()
+        try StudioBrandDirectory.makePrimary(second, in: context)
+        #expect(second.isPrimary)
+        #expect(!primary.isPrimary)
+        #expect(invoice.studio?.persistentModelID == primary.persistentModelID)
+
+        try StudioBrandDirectory.delete(second, in: context)
+        #expect(invoice.studio?.persistentModelID == primary.persistentModelID)
+        #expect(primary.isPrimary)
+        let remaining = try context.fetch(FetchDescriptor<StudioBrand>())
+        #expect(remaining.count == 1)
+    }
+
+    @Test func invoicePDFPrintsTheIssuingStudio() throws {
+        let studio = StudioBrand(
+            name: "Grant & Deb Photographers",
+            email: "grant@grantdeb.com",
+            phone: "804-555-0199",
+            address: "Richmond, VA",
+            isPrimary: true
+        )
+        let invoice = Invoice(number: "1849772", status: .pending, billToName: "Snow Companies")
+        invoice.studio = studio
+        let data = InvoicePDFRenderer.render(invoice)
+        let text = try #require(PDFDocument(data: data)?.string)
+        #expect(text.contains("Grant & Deb Photographers"))
+        #expect(text.contains("grant@grantdeb.com"))
+        #expect(text.contains("804-555-0199"))
+        #expect(text.contains("Richmond, VA"))
+        #expect(text.contains("Invoice"))
+        #expect(text.contains("1849772"))
+    }
+
     @Test func moneyParsesCents() {
         #expect(ShootQMoney.decimal("1400.00") == Decimal(string: "1400.00")!)
         #expect(ShootQMoney.cents(85) == Decimal(string: "85.00")!)
+    }
+
+    @Test func dashboardCashWindowsFollowReceiptDates() throws {
+        let calendar = utcCalendar()
+        let now = utcDate(calendar, 2026, 10, 23, hour: 15)
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let amounts: [(Date, Decimal)] = [
+            (utcDate(calendar, 2026, 10, 2), 100),
+            (utcDate(calendar, 2026, 10, 23), 40),
+            (utcDate(calendar, 2026, 9, 15), 200),
+            (utcDate(calendar, 2026, 8, 1), 10),
+            (utcDate(calendar, 2026, 5, 15), 7),
+            (utcDate(calendar, 2026, 1, 5), 1000),
+            (utcDate(calendar, 2025, 12, 20), 999),
+            (utcDate(calendar, 2025, 10, 2), 50),
+            (utcDate(calendar, 2026, 11, 1, hour: 0), 12_345),
+        ]
+        let receipts = amounts.map { paidAt, amount in
+            PaymentReceipt(paidAt: paidAt, amount: amount)
+        }
+        for receipt in receipts {
+            context.insert(receipt)
+        }
+
+        let month = DashboardMath.collectionReport(
+            receipts: receipts, window: .month, now: now, calendar: calendar
+        )
+        let three = DashboardMath.collectionReport(
+            receipts: receipts, window: .threeMonths, now: now, calendar: calendar
+        )
+        let six = DashboardMath.collectionReport(
+            receipts: receipts, window: .sixMonths, now: now, calendar: calendar
+        )
+        let year = DashboardMath.collectionReport(
+            receipts: receipts, window: .year, now: now, calendar: calendar
+        )
+
+        #expect(month.total == 140)
+        #expect(month.priorTotal == 200)
+        #expect(month.buckets.count == 5)
+        #expect(month.buckets.first?.label == "1–7")
+        #expect(month.buckets[3].label == "22–28")
+        #expect(month.buckets[3].collected == 40)
+        #expect(month.buckets.last?.label == "29–31")
+        #expect(month.buckets.reduce(Decimal.zero) { $0 + $1.collected } == month.total)
+
+        let symbols = calendar.shortMonthSymbols
+        #expect(three.total == 350)
+        #expect(three.priorTotal == 7)
+        #expect(three.buckets.map(\.label) == [symbols[7], symbols[8], symbols[9]])
+        #expect(three.buckets.reduce(Decimal.zero) { $0 + $1.collected } == three.total)
+
+        #expect(six.total == 357)
+        #expect(six.priorTotal == 1999)
+        #expect(six.buckets.count == 6)
+        #expect(six.buckets.first?.label == symbols[4])
+
+        #expect(year.total == 1357)
+        #expect(year.priorTotal == 50)
+        #expect(year.buckets.count == 10)
+        #expect(year.buckets.map(\.label) == Array(symbols.prefix(10)))
+        #expect(year.buckets.reduce(Decimal.zero) { $0 + $1.collected } == year.total)
+        #expect(DashboardMath.collectedThisMonth(in: receipts, now: now, calendar: calendar) == 140)
+        #expect(DashboardMath.collectedThisYear(in: receipts, now: now, calendar: calendar) == 1357)
+    }
+
+    @Test func dashboardCollectedFilterFollowsTheCash() throws {
+        let calendar = utcCalendar()
+        let now = utcDate(calendar, 2026, 10, 23, hour: 15)
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let earlyOctober = Invoice(number: "2", status: .pending, balance: 10, billToName: "Early")
+        let midOctober = Invoice(number: "10", status: .pending, balance: 40, billToName: "Mid")
+        let september = Invoice(number: "9", status: .paid, amountPaid: 80, balance: 0, billToName: "Sep")
+        let waiting = Invoice(
+            number: "1",
+            dueDate: Date.distantFuture,
+            status: .pending,
+            balance: 15,
+            billToName: "Wait"
+        )
+        let late = Invoice(
+            number: "8",
+            dueDate: Date(timeIntervalSince1970: 0),
+            status: .pending,
+            balance: 4,
+            billToName: "Late"
+        )
+        for invoice in [earlyOctober, midOctober, september, waiting, late] {
+            context.insert(invoice)
+        }
+        let earlyReceipt = PaymentReceipt(paidAt: utcDate(calendar, 2026, 10, 2), amount: 5)
+        earlyReceipt.invoice = earlyOctober
+        let midReceipt = PaymentReceipt(paidAt: utcDate(calendar, 2026, 10, 10), amount: 25)
+        midReceipt.invoice = midOctober
+        let septemberReceipt = PaymentReceipt(paidAt: utcDate(calendar, 2026, 9, 10), amount: 80)
+        septemberReceipt.invoice = september
+        for receipt in [earlyReceipt, midReceipt, septemberReceipt] {
+            context.insert(receipt)
+        }
+        let invoices = [earlyOctober, midOctober, september, waiting, late]
+        let receipts = [earlyReceipt, midReceipt, septemberReceipt]
+
+        let month = DashboardMath.ledgerItems(
+            invoices, receipts: receipts, filter: .cash(.month), search: "", now: now, calendar: calendar
+        )
+        #expect(month.map(\.invoice.number) == ["10", "2"])
+        #expect(month.map(\.periodCollected) == [25, 5])
+
+        let three = DashboardMath.ledgerItems(
+            invoices, receipts: receipts, filter: .cash(.threeMonths), search: "", now: now, calendar: calendar
+        )
+        #expect(three.map(\.invoice.number) == ["9", "10", "2"])
+
+        let report = DashboardMath.collectionReport(receipts: receipts, window: .month, now: now, calendar: calendar)
+        let midWeek = report.buckets.first { $0.collected == 25 }
+        let narrowed = DashboardMath.ledgerItems(
+            invoices,
+            receipts: receipts,
+            filter: .cash(.month, bucketStart: midWeek?.start),
+            search: "",
+            now: now,
+            calendar: calendar
+        )
+        #expect(narrowed.map(\.invoice.number) == ["10"])
+
+        let waitingOnly = DashboardMath.ledgerItems(
+            invoices, filter: .notYetDue, search: "", now: now, calendar: calendar
+        )
+        #expect(waitingOnly.map(\.invoice.number).contains("1"))
+        #expect(!waitingOnly.map(\.invoice.number).contains("8"))
+        #expect(DashboardMath.ledgerItems(invoices, filter: .overdue, search: "", now: now).map(\.invoice.number) == ["8"])
+    }
+
+    @Test func dashboardOpenBookSplitsOverdueFromCurrent() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let late = Invoice(
+            number: "1",
+            dueDate: Date(timeIntervalSince1970: 0),
+            status: .pending,
+            balance: 300
+        )
+        let pending = Invoice(
+            number: "2",
+            dueDate: Date.distantFuture,
+            status: .pending,
+            balance: 50
+        )
+        let draft = Invoice(number: "5", status: .draft, balance: 15)
+        let paid = Invoice(number: "3", status: .paid, total: 80, amountPaid: 80, balance: 0)
+        let voided = Invoice(number: "4", status: .void, balance: 999)
+        let invoices = [late, pending, draft, paid, voided]
+        for invoice in invoices {
+            context.insert(invoice)
+        }
+
+        let book = DashboardMath.openBook(in: invoices)
+        #expect(book.overdue == 300)
+        #expect(book.current == 65)
+        #expect(book.total == 365)
+        #expect(book.total == DashboardMath.openBalance(in: invoices))
+    }
+
+    @Test func dashboardLedgerLeadsWithTheSoonestDueDate() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let sooner = Invoice(
+            number: "1",
+            dueDate: Date.now.addingTimeInterval(86_400),
+            status: .pending,
+            balance: 10,
+            billToName: "Ada"
+        )
+        let later = Invoice(
+            number: "2",
+            dueDate: Date.now.addingTimeInterval(86_400 * 9),
+            status: .pending,
+            balance: 80,
+            billToName: "Bea"
+        )
+        let late = Invoice(
+            number: "9",
+            dueDate: Date(timeIntervalSince1970: 0),
+            status: .pending,
+            balance: 4,
+            billToName: "Late"
+        )
+        let voided = Invoice(number: "5", status: .void, balance: 30, billToName: "Void")
+        let blank = Invoice(shootqID: "1234867", number: "", status: .pending, balance: 5, billToName: "Snow")
+        for invoice in [later, sooner, late, voided, blank] {
+            context.insert(invoice)
+        }
+
+        let open = DashboardMath.ledgerItems([later, sooner, late, voided, blank], filter: .open, search: "")
+        #expect(open.map(\.invoice.number) == ["9", "1", "2", ""])
+        #expect(open.map(\.invoice.billToName) == ["Late", "Ada", "Bea", "Snow"])
+        #expect(DashboardMath.ledgerItems([later, sooner], filter: .open, search: "bea").map(\.invoice.number) == ["2"])
+        #expect(DashboardMath.ledgerItems([sooner, late], filter: .overdue, search: "").map(\.invoice.number) == ["9"])
+        #expect(DashboardMath.ledgerItems([sooner, late], filter: .notYetDue, search: "").map(\.invoice.number) == ["1"])
+        #expect(DashboardMath.ledgerItems([voided], filter: .open, search: "").isEmpty)
+        #expect(DashboardMath.ledgerItems([voided], filter: .all, search: "").count == 1)
+        #expect(DashboardMath.ledgerItems([blank], filter: .open, search: "1234867").map(\.invoice.billToName) == ["Snow"])
+    }
+
+    @Test func dashboardComparisonSpeaksInPlainLanguage() {
+        #expect(DashboardMath.percentChange(current: 200, prior: 100) == 1)
+        #expect(DashboardMath.percentChange(current: 50, prior: 100) == -0.5)
+        #expect(DashboardMath.percentChange(current: 10, prior: 0) == nil)
+        #expect(DashboardMath.comparisonCaption(current: 0, prior: 0, window: .year) == nil)
+        #expect(
+            DashboardMath.comparisonCaption(current: 10, prior: 0, window: .month)
+                == "Nothing collected in the prior month"
+        )
+        #expect(
+            DashboardMath.comparisonCaption(current: 100, prior: 100, window: .sixMonths)
+                == "Even with the prior 6 months"
+        )
+        let up = DashboardMath.comparisonCaption(current: 200, prior: 100, window: .threeMonths)
+        #expect(up?.contains("above") == true)
+        #expect(up?.contains("prior 3 months") == true)
+        let down = DashboardMath.comparisonCaption(current: 40, prior: 80, window: .year)
+        #expect(down?.contains("below") == true)
+        #expect(down?.contains("prior year") == true)
+    }
+
+    private func utcCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar
+    }
+
+    private func utcDate(_ calendar: Calendar, _ year: Int, _ month: Int, _ day: Int, hour: Int = 12) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
     }
 
     private func writeVersion1Invoice(at storeURL: URL) throws {
@@ -164,8 +742,15 @@ struct BigShootTests {
         try container.mainContext.save()
     }
 
+    private func isolatedDefaults(_ name: String) -> UserDefaults {
+        let suite = "BigShoot.JobTypeCatalog.\(name)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
     private func makeBooksContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: StudioSchemaV2.self)
+        let schema = Schema(versionedSchema: StudioSchemaV4.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [configuration])
     }

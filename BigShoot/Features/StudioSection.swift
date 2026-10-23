@@ -6,8 +6,13 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
     case jobs
     case invoices
     case catalog
+    case settings
 
     var id: String { rawValue }
+
+    static var books: [StudioSection] {
+        [.dashboard, .contacts, .jobs, .invoices, .catalog]
+    }
 
     var title: String {
         switch self {
@@ -16,6 +21,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
         case .jobs: "Jobs"
         case .invoices: "Invoices"
         case .catalog: "Catalog"
+        case .settings: "Settings"
         }
     }
 
@@ -26,6 +32,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
         case .jobs: "camera"
         case .invoices: "doc.text"
         case .catalog: "list.bullet.rectangle"
+        case .settings: "gearshape"
         }
     }
 }

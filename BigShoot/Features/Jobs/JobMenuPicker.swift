@@ -1,0 +1,174 @@
+import SwiftData
+import SwiftUI
+
+struct JobMenuPicker: View {
+    let jobs: [Job]
+    let selection: Job?
+    var openBalance: [PersistentIdentifier: String] = [:]
+    /// When a client already has an open invoice, existing jobs lead and the escapes sit at the bottom.
+    var placeEscapesLast: Bool = false
+    var onAdd: () -> Void
+    var onSelect: (Job?) -> Void
+    var onEdit: (Job) -> Void
+
+    @State private var isOpen = false
+
+    private var title: String {
+        selection?.displayName ?? "No job"
+    }
+
+    var body: some View {
+        LabeledContent("Job") {
+            Button {
+                isOpen.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Job")
+            .accessibilityValue(title)
+        }
+        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+            JobMenuList(
+                jobs: jobs,
+                selectionID: selection?.persistentModelID,
+                openBalance: openBalance,
+                placeEscapesLast: placeEscapesLast,
+                onAdd: {
+                    isOpen = false
+                    onAdd()
+                },
+                onSelect: { job in
+                    isOpen = false
+                    onSelect(job)
+                },
+                onEdit: { job in
+                    isOpen = false
+                    onEdit(job)
+                }
+            )
+        }
+    }
+}
+
+private struct JobMenuList: View {
+    let jobs: [Job]
+    let selectionID: PersistentIdentifier?
+    var openBalance: [PersistentIdentifier: String]
+    var placeEscapesLast: Bool
+    var onAdd: () -> Void
+    var onSelect: (Job?) -> Void
+    var onEdit: (Job) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 1) {
+                if placeEscapesLast {
+                    jobRows
+                    Divider()
+                        .padding(.vertical, 4)
+                    addJobRow
+                    noJobRow
+                } else {
+                    addJobRow
+                    Divider()
+                        .padding(.vertical, 4)
+                    noJobRow
+                    jobRows
+                }
+            }
+            .padding(6)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: 380)
+        .frame(height: min(520, CGFloat(jobs.count + 2) * rowStride + 28))
+    }
+
+    private var rowStride: CGFloat {
+        openBalance.isEmpty ? 30 : 46
+    }
+
+    private var addJobRow: some View {
+        JobMenuRow(title: "Add a job", systemImage: "plus", isSelected: false, action: onAdd)
+    }
+
+    private var noJobRow: some View {
+        JobMenuRow(title: "No job", isSelected: selectionID == nil) {
+            onSelect(nil)
+        }
+    }
+
+    private var jobRows: some View {
+        ForEach(jobs) { job in
+            JobMenuRow(
+                title: job.displayName,
+                detail: openBalance[job.persistentModelID],
+                isSelected: job.persistentModelID == selectionID
+            ) {
+                onSelect(job)
+            }
+            .contextMenu {
+                Button("Edit", systemImage: "pencil") {
+                    onEdit(job)
+                }
+            }
+            .accessibilityAction(named: "Edit") {
+                onEdit(job)
+            }
+        }
+    }
+}
+
+private struct JobMenuRow: View {
+    let title: String
+    var detail: String?
+    var systemImage: String?
+    var isSelected: Bool
+    var action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                rowIcon
+                    .frame(width: 16, height: 16)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .lineLimit(1)
+                    if let detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(hovered ? Color.white.opacity(0.85) : Color.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .foregroundStyle(hovered ? Color.white : Color.primary)
+            .background(hovered ? Color.accentColor : Color.clear, in: .rect(cornerRadius: 6))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+    }
+
+    @ViewBuilder
+    private var rowIcon: some View {
+        if isSelected {
+            Image(systemName: "checkmark")
+        } else if let systemImage {
+            Image(systemName: systemImage)
+        } else {
+            Color.clear
+        }
+    }
+}

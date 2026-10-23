@@ -103,20 +103,10 @@ struct ContactListView: View {
     }
 
     var body: some View {
-        List(filtered, selection: $selection) { contact in
-            VStack(alignment: .leading, spacing: 2) {
-                Text(contact.displayName)
-                if !contact.email.isEmpty {
-                    Text(contact.email)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tag(contact.persistentModelID)
-            .padding(.vertical, 2)
+        VStack(spacing: 0) {
+            StudioColumnSearch(text: $search, prompt: "Name or email", findLabel: "Find Contact")
+            contactRows
         }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
-        .searchable(text: $search, prompt: "Name or email")
         .navigationTitle("Contacts")
         .toolbar {
             ToolbarItem {
@@ -131,14 +121,40 @@ struct ContactListView: View {
                 Button("Add Contact", systemImage: "plus", action: onAdd)
             }
         }
+    }
+
+    private var contactRows: some View {
+        List(filtered, selection: $selection) { contact in
+            VStack(alignment: .leading, spacing: 2) {
+                Text(contact.displayName)
+                if !contact.email.isEmpty {
+                    Text(contact.email)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tag(contact.persistentModelID)
+            .padding(.vertical, 2)
+        }
+        .listStyle(.inset(alternatesRowBackgrounds: true))
         .overlay {
             if filtered.isEmpty {
                 StudioEmptyState(
-                    title: "No contacts",
-                    message: scope == .archived ? "No one is archived." : "Import ShootQ, or add the first client.",
+                    title: search.isEmpty ? "No contacts" : "No matches",
+                    message: emptyMessage,
                     symbol: "person.2"
                 )
             }
         }
+    }
+
+    private var emptyMessage: String {
+        if !search.isEmpty {
+            return "Try a different name or email."
+        }
+        if scope == .archived {
+            return "No one is archived."
+        }
+        return "Import ShootQ, or add the first client."
     }
 }

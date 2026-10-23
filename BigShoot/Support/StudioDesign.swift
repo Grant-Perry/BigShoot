@@ -5,6 +5,7 @@ import SwiftUI
 enum StudioDesign {
     static let gold = Color(red: 0.80, green: 0.65, blue: 0.35)
     static let rose = Color(red: 0.86, green: 0.46, blue: 0.56)
+    static let paid = Color(red: 0.38, green: 0.62, blue: 0.42)
     static let ink = Color(red: 0.08, green: 0.09, blue: 0.13)
 
     enum Spacing {
@@ -35,7 +36,7 @@ enum StudioMoney {
     }
 }
 
-enum StudioDay {
+nonisolated enum StudioDay {
     static func string(_ date: Date?) -> String {
         guard let date else { return "—" }
         return date.formatted(date: .abbreviated, time: .omitted)
@@ -91,10 +92,11 @@ struct StudioEmptyState: View {
 }
 
 struct StatusBadge: View {
-    let status: InvoiceStatus
+    var status: InvoiceStatus
+    var title: String? = nil
 
     var body: some View {
-        Text(status.title)
+        Text(title ?? status.title)
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -105,7 +107,7 @@ struct StatusBadge: View {
     private var tint: Color {
         switch status {
         case .overdue: StudioDesign.rose
-        case .paid: Color(red: 0.38, green: 0.62, blue: 0.42)
+        case .paid: StudioDesign.paid
         case .pending: StudioDesign.gold
         case .draft, .void: .secondary
         }

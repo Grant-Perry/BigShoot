@@ -10,6 +10,7 @@ struct InvoiceDetailView: View {
     var onMarkSent: () -> Void
     var onDelete: () -> Void
 
+    @State private var numberHeight: CGFloat = 48
     @Query(sort: \BooksEvent.occurredAt, order: .reverse) private var booksEvents: [BooksEvent]
 
     private var trail: [BooksEvent] {
@@ -73,21 +74,48 @@ struct InvoiceDetailView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(invoice.displayNumber)
-                    .font(StudioDesign.displayHero)
+                HStack(alignment: .center, spacing: 3) {
+                    SidewaysInvoiceMark(maxHeight: numberHeight)
+                    Text(invoice.displayNumber)
+                        .font(StudioDesign.displayHero)
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            guard height > 1, height != numberHeight else { return }
+                            numberHeight = height
+                        }
+                }
+                if let job = invoice.job {
+                    Text(job.displayName)
+                        .font(.title3)
+                        .lineLimit(2)
+                }
                 Text(invoice.clientName)
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
-                StatusBadge(status: invoice.displayStatus)
+                HStack(spacing: 8) {
+                    if invoice.canEditLines {
+                        Button("Edit", systemImage: "pencil", action: onEdit)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    StatusBadge(status: invoice.displayStatus)
+                }
                 Text(StudioMoney.string(invoice.balance))
                     .font(StudioDesign.metric(28))
                     .monospacedDigit()
                 Text("Balance")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let due = invoice.dueSummary {
+                    Text("Due \(due)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
             }
         }
     }
@@ -105,7 +133,7 @@ struct InvoiceDetailView: View {
             }
             HStack {
                 labeled("Invoice", StudioDay.string(invoice.invoiceDate))
-                labeled("Due", StudioDay.string(invoice.dueDate))
+                labeled("Due", invoice.dueSummary ?? StudioDay.string(invoice.dueDate))
                 if let paid = invoice.paidDate {
                     labeled("Paid", StudioDay.string(paid))
                 }
@@ -223,5 +251,59 @@ struct InvoiceDetailView: View {
 
     private func plain(_ value: Decimal) -> String {
         value.formatted(.number.precision(.fractionLength(0...2)))
+    }
+}
+
+// MARK: - Spine
+
+/// “INVOICE”, turned −90°, kept inside the invoice number’s line height.
+private struct SidewaysInvoiceMark: View {
+    var maxHeight: CGFloat
+
+    var body: some View {
+        ViewThatFits(in: .vertical) {
+            mark(16)
+            mark(15)
+            mark(14)
+            mark(13)
+            mark(12)
+            mark(11)
+            mark(10)
+        }
+        .frame(height: maxHeight)
+        .accessibilityHidden(true)
+    }
+
+    private func mark(_ size: CGFloat) -> some View {
+        SidewaysLayout {
+            Text("INVOICE")
+                .font(.system(size: size, weight: .heavy).width(.compressed))
+                .foregroundStyle(.black)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 1)
+                .padding(.vertical, 2)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .rotationEffect(.degrees(-90))
+        }
+    }
+}
+
+/// Reports the child’s size with the axes swapped. The child draws its own −90° rotation.
+private struct SidewaysLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let size = child.sizeThatFits(.unspecified)
+        return CGSize(width: size.height, height: size.width)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let child = subviews.first else { return }
+        let size = child.sizeThatFits(.unspecified)
+        child.place(
+            at: CGPoint(x: bounds.midX, y: bounds.midY),
+            anchor: .center,
+            proposal: ProposedViewSize(width: size.width, height: size.height)
+        )
     }
 }

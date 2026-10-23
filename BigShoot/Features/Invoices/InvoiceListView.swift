@@ -3,18 +3,26 @@ import SwiftUI
 
 enum InvoiceScope: String, CaseIterable, Identifiable {
     case open
-    case paid
+    case overdue
     case all
 
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
 
+    var title: String {
+        switch self {
+        case .open: "Open"
+        case .overdue: "Overdue"
+        case .all: "All"
+        }
+    }
+
+    /// Open is every invoice that has not been paid. Void invoices are off the books.
     func includes(_ invoice: Invoice) -> Bool {
         switch self {
         case .open:
-            invoice.status != .void && invoice.displayStatus != .paid
-        case .paid:
-            invoice.displayStatus == .paid
+            invoice.holdsOpenBalance
+        case .overdue:
+            invoice.displayStatus == .overdue
         case .all:
             true
         }
@@ -24,6 +32,7 @@ enum InvoiceScope: String, CaseIterable, Identifiable {
 struct InvoiceWorkspace: View {
     @Binding var selection: PersistentIdentifier?
     @Binding var showNewInvoice: Bool
+    var onOpenInvoice: (PersistentIdentifier) -> Void
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Invoice.invoiceDate, order: .reverse) private var invoices: [Invoice]
@@ -44,6 +53,7 @@ struct InvoiceWorkspace: View {
             return invoice.displayNumber.localizedStandardContains(search)
                 || invoice.clientName.localizedStandardContains(search)
                 || invoice.number.localizedStandardContains(search)
+                || invoice.job?.name.localizedStandardContains(search) == true
         }
     }
 
@@ -88,7 +98,7 @@ struct InvoiceWorkspace: View {
             InvoicePDFPreviewSheet(invoice: invoice, note: nil)
         }
         .sheet(item: $editingInvoice) { invoice in
-            NewInvoiceSheet(existing: invoice)
+            NewInvoiceSheet(existing: invoice, onOpenInvoice: onOpenInvoice)
         }
         .sheet(isPresented: $showTrail) {
             BooksHistorySheet()
@@ -128,33 +138,33 @@ struct InvoiceWorkspace: View {
     }
 
     private var invoiceList: some View {
-        List(filtered, selection: $selection) { invoice in
-            invoiceRow(invoice)
-                .tag(invoice.persistentModelID)
-                .contextMenu {
-                    InvoiceContextMenu(
-                        invoice: invoice,
-                        onRecordPayment: { begin(invoice) { paymentInvoice = invoice } },
-                        onEdit: { begin(invoice) { editingInvoice = invoice } },
-                        onPreview: { begin(invoice) { previewInvoice = invoice } },
-                        onRemind: { begin(invoice) { remind(invoice) } },
-                        onMarkSent: { begin(invoice) { markSent(invoice) } },
-                        onDelete: { begin(invoice) { askToDelete(invoice) } }
-                    )
+        VStack(spacing: 0) {
+            scopePicker
+            StudioColumnSearch(text: $search, prompt: "Number, client, or job", findLabel: "Find Invoice")
+            List(filtered, selection: $selection) { invoice in
+                InvoiceListRow(invoice: invoice)
+                    .tag(invoice.persistentModelID)
+                    .contextMenu {
+                        InvoiceContextMenu(
+                            invoice: invoice,
+                            onRecordPayment: { begin(invoice) { paymentInvoice = invoice } },
+                            onEdit: { begin(invoice) { editingInvoice = invoice } },
+                            onPreview: { begin(invoice) { previewInvoice = invoice } },
+                            onRemind: { begin(invoice) { remind(invoice) } },
+                            onMarkSent: { begin(invoice) { markSent(invoice) } },
+                            onDelete: { begin(invoice) { askToDelete(invoice) } }
+                        )
+                    }
+            }
+            .listStyle(.inset(alternatesRowBackgrounds: true))
+            .overlay {
+                if filtered.isEmpty {
+                    StudioEmptyState(title: emptyTitle, message: emptyMessage, symbol: "doc.text")
                 }
+            }
         }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
-        .searchable(text: $search, prompt: "Number or client")
         .navigationTitle("Invoices")
         .toolbar {
-            ToolbarItem {
-                Picker("Show", selection: $scope) {
-                    ForEach(InvoiceScope.allCases) { item in
-                        Text(item.title).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Audit Trail", systemImage: "clock.arrow.circlepath") { showTrail = true }
             }
@@ -162,34 +172,36 @@ struct InvoiceWorkspace: View {
                 Button("New Invoice", systemImage: "plus") { showNewInvoice = true }
             }
         }
-        .overlay {
-            if filtered.isEmpty {
-                StudioEmptyState(title: "No invoices", message: "This filter is clear.", symbol: "doc.text")
+    }
+
+    private var scopePicker: some View {
+        Picker("Show", selection: $scope) {
+            ForEach(InvoiceScope.allCases) { item in
+                Text(item.title).tag(item)
             }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
+        .padding(.bottom, 2)
+    }
+
+    private var emptyTitle: String {
+        if !search.isEmpty { return "No matches" }
+        switch scope {
+        case .open: return "No open invoices"
+        case .overdue: return "Nothing overdue"
+        case .all: return "No invoices"
         }
     }
 
-    private func invoiceRow(_ invoice: Invoice) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(invoice.displayNumber)
-                    .font(.headline)
-                Spacer()
-                Text(StudioMoney.string(invoice.balance))
-                    .font(StudioDesign.metric(14))
-                    .monospacedDigit()
-            }
-            Text(invoice.clientName)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            HStack {
-                Text(StudioDay.string(invoice.invoiceDate))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                StatusBadge(status: invoice.displayStatus)
-            }
+    private var emptyMessage: String {
+        if !search.isEmpty { return "Try another number, client, or job." }
+        switch scope {
+        case .open: return "Every balance on the books is settled."
+        case .overdue: return "Every open balance is still on time."
+        case .all: return "Write a new invoice from the catalog."
         }
-        .padding(.vertical, 4)
     }
 
     private func begin(_ invoice: Invoice, action: () -> Void) {

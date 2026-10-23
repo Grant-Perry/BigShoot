@@ -242,7 +242,12 @@ struct ShootQImporter {
             map[key] = invoice
         }
         let localPaid = invoice.amountPaid
-        invoice.number = row.number?.value ?? invoice.number
+        let importedNumber = row.number?.value.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !importedNumber.isEmpty {
+            invoice.number = importedNumber
+        } else if invoice.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            invoice.number = key
+        }
         invoice.invoiceDate = ShootQDates.parse(row.invoiceDate) ?? invoice.invoiceDate
         invoice.dueDate = ShootQDates.parse(row.dueDate)
         invoice.paidDate = ShootQDates.parse(row.paidDate)

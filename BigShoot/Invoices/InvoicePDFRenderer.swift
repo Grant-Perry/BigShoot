@@ -23,11 +23,25 @@ enum InvoicePDFRenderer {
         let ink = NSColor(calibratedWhite: 0.12, alpha: 1)
         let muted = NSColor(calibratedWhite: 0.38, alpha: 1)
 
-        draw("Grant & Deb Photography", at: margin, y: &y, width: 320, font: system(22), color: ink, context: context)
+        let studio = invoice.studio
+        draw(studio?.displayName ?? "Studio", at: margin, y: &y, width: 320, font: system(22), color: ink, context: context)
+        for line in studio?.detailLines.prefix(8) ?? [] {
+            draw(line, at: margin, y: &y, width: 320, font: system(11), color: muted, context: context)
+        }
         y += 4
         draw("Studio invoice", at: margin, y: &y, width: 320, font: system(12), color: muted, context: context)
 
         let number = invoice.displayNumber
+        draw(
+            "Invoice",
+            at: media.width - margin - 180,
+            y: 32,
+            width: 180,
+            font: system(11),
+            color: muted,
+            alignment: .right,
+            context: context
+        )
         draw(
             number,
             at: media.width - margin - 180,
@@ -50,12 +64,14 @@ enum InvoicePDFRenderer {
         )
 
         y += 10
+        y = max(y, 108)
         context.setStrokeColor(gold.cgColor)
         context.setLineWidth(1)
         context.move(to: CGPoint(x: margin, y: media.height - y))
         context.addLine(to: CGPoint(x: media.width - margin, y: media.height - y))
         context.strokePath()
         y += 22
+        let billToY = y
 
         draw("Bill to", at: margin, y: &y, width: 240, font: system(11, weight: .semibold), color: muted, context: context)
         draw(invoice.clientName, at: margin, y: &y, width: 260, font: system(14, weight: .semibold), color: ink, context: context)
@@ -67,7 +83,7 @@ enum InvoicePDFRenderer {
         }
 
         let metaX = media.width - margin - 200
-        var metaY: CGFloat = 128
+        var metaY = billToY
         meta("Invoice date", StudioDay.string(invoice.invoiceDate), x: metaX, y: &metaY, context: context, ink: ink, muted: muted)
         meta("Due", StudioDay.string(invoice.dueDate), x: metaX, y: &metaY, context: context, ink: ink, muted: muted)
         if let paid = invoice.paidDate {

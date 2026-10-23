@@ -23,6 +23,42 @@ nonisolated enum InvoiceMath {
         return .pending
     }
 
+    /// A draft, pending, or overdue invoice still represents money that can be collected.
+    static func holdsOpenBalance(
+        stored: InvoiceStatus,
+        balance: Decimal,
+        dueDate: Date?,
+        now: Date = .now
+    ) -> Bool {
+        switch displayStatus(stored: stored, balance: balance, dueDate: dueDate, now: now) {
+        case .paid, .void:
+            false
+        case .draft, .pending, .overdue:
+            true
+        }
+    }
+
+    static func dueCountdown(until due: Date, now: Date = .now) -> String {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: now),
+            to: calendar.startOfDay(for: due)
+        ).day ?? 0
+        switch days {
+        case ..<(-1):
+            return "\(abs(days)) days past"
+        case -1:
+            return "1 day past"
+        case 0:
+            return "Due today"
+        case 1:
+            return "1 day left"
+        default:
+            return "\(days) days left"
+        }
+    }
+
     static func nextNumber(among numbers: [String]) -> String {
         let highest = numbers.compactMap { Int($0) }.max() ?? 0
         return String(highest + 1)

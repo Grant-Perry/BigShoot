@@ -16,6 +16,7 @@ enum StudioBooksExporter {
             if accessing { folder.stopAccessingSecurityScopedResource() }
         }
 
+        let studios = try context.fetch(FetchDescriptor<StudioBrand>())
         let contacts = try context.fetch(FetchDescriptor<Contact>())
         let jobs = try context.fetch(FetchDescriptor<Job>())
         let invoices = try context.fetch(FetchDescriptor<Invoice>())
@@ -23,6 +24,16 @@ enum StudioBooksExporter {
         let receipts = try context.fetch(FetchDescriptor<PaymentReceipt>())
         let schedule = try context.fetch(FetchDescriptor<PaymentScheduleEntry>())
 
+        try write(folder, "studios.csv", header: ["name", "email", "phone", "address", "primary", "archived"], rows: studios.map { studio in
+            [
+                studio.displayName,
+                studio.email,
+                studio.phone,
+                studio.address,
+                studio.isPrimary ? "yes" : "no",
+                studio.archived ? "yes" : "no",
+            ]
+        })
         try write(folder, "contacts.csv", header: ["name", "email", "phone", "address", "anniversary", "archived"], rows: contacts.map { contact in
             [
                 contact.displayName,
@@ -36,7 +47,7 @@ enum StudioBooksExporter {
         try write(folder, "jobs.csv", header: ["name", "date", "type", "status", "contact"], rows: jobs.map { job in
             [job.displayName, StudioDay.string(job.eventDate), job.jobType, job.status, job.contact?.displayName ?? ""]
         })
-        try write(folder, "invoices.csv", header: ["number", "client", "date", "due", "status", "total", "paid", "balance"], rows: invoices.map { invoice in
+        try write(folder, "invoices.csv", header: ["number", "client", "date", "due", "status", "total", "paid", "balance", "studio"], rows: invoices.map { invoice in
             [
                 invoice.displayNumber,
                 invoice.clientName,
@@ -46,6 +57,7 @@ enum StudioBooksExporter {
                 "\(invoice.total)",
                 "\(invoice.amountPaid)",
                 "\(invoice.balance)",
+                invoice.studio?.displayName ?? "",
             ]
         })
         try write(folder, "invoice-lines.csv", header: ["invoice", "name", "quantity", "price", "detail"], rows: lines.map { line in

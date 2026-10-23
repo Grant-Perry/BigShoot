@@ -10,6 +10,14 @@ struct StudioRootView: View {
     @State private var showNewInvoice = false
     @State private var exportError: String?
     @State private var importModel = ShootQImportModel()
+    @Query(sort: \StudioBrand.name) private var studios: [StudioBrand]
+    @AppStorage(StudioBanner.key) private var bannerText = StudioBanner.fallback
+
+    private var primaryStudioName: String {
+        let primary = studios.first { $0.isPrimary && !$0.archived } ?? studios.first { !$0.archived }
+        let name = primary?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "Studio" : name
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -19,8 +27,9 @@ struct StudioRootView: View {
             detail
         }
         .frame(minWidth: 1100, minHeight: 720)
+        .studioAppFooter()
         .sheet(isPresented: $showNewInvoice) {
-            NewInvoiceSheet()
+            NewInvoiceSheet(onOpenInvoice: openInvoice)
         }
         .sheet(isPresented: $importModel.isPresentingOffer) {
             ImportOfferSheet(model: importModel)
@@ -32,6 +41,11 @@ struct StudioRootView: View {
         }
         .task {
             DebugConfig.configureFromLaunchArguments()
+            do {
+                try StudioBrandDirectory.prepare(in: modelContext)
+            } catch {
+                DebugPrint(mode: .error, "Could not prepare studios: \(error.localizedDescription)")
+            }
             importModel.offerIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .bigShootNewInvoice)) { _ in
@@ -50,17 +64,27 @@ struct StudioRootView: View {
     }
 
     private var sidebar: some View {
-        List(StudioSection.allCases, selection: $section) { item in
-            Label(item.title, systemImage: item.symbol)
-                .tag(item)
+        List(selection: $section) {
+            Section {
+                ForEach(StudioSection.books) { item in
+                    Label(item.title, systemImage: item.symbol)
+                        .tag(item)
+                }
+            }
+            Section {
+                Label(StudioSection.settings.title, systemImage: StudioSection.settings.symbol)
+                    .tag(StudioSection.settings)
+            }
         }
         .listStyle(.sidebar)
         .navigationTitle("BigShoot")
         .safeAreaInset(edge: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Grant & Deb")
+                Text(primaryStudioName)
                     .font(.system(size: 22, weight: .regular, design: .default))
-                Text("Studio books")
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+                Text(StudioBanner.resolved(bannerText))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -77,16 +101,23 @@ struct StudioRootView: View {
         case .dashboard:
             DashboardView(
                 onOpenInvoice: openInvoice,
-                onShowInvoices: { section = .invoices }
+                onShowInvoices: { section = .invoices },
+                onNewInvoice: { showNewInvoice = true }
             )
         case .contacts:
             ContactWorkspace(selection: $contactID, onOpenJob: openJob, onOpenInvoice: openInvoice)
         case .jobs:
             JobWorkspace(selection: $jobID, onOpenInvoice: openInvoice)
         case .invoices:
-            InvoiceWorkspace(selection: $invoiceID, showNewInvoice: $showNewInvoice)
+            InvoiceWorkspace(
+                selection: $invoiceID,
+                showNewInvoice: $showNewInvoice,
+                onOpenInvoice: openInvoice
+            )
         case .catalog:
             CatalogWorkspace()
+        case .settings:
+            SettingsWorkspace()
         }
     }
 

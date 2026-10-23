@@ -26,17 +26,19 @@ enum ReminderComposer {
         let name = invoice.clientName
         let balance = StudioMoney.string(invoice.balance)
         let due = StudioDay.string(invoice.dueDate)
+        let signedBy = invoice.studio?.displayName ?? "Studio"
+        let letterhead = invoice.studio?.letterhead.joined(separator: "\n") ?? signedBy
         service.recipients = [invoice.contact?.email].compactMap { email in
             let trimmed = email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return trimmed.isEmpty ? nil : trimmed
         }
-        service.subject = "Invoice \(invoice.displayNumber) from Grant & Deb Photography"
+        service.subject = "Invoice \(invoice.displayNumber) from \(signedBy)"
         let body = """
         Hello \(name),
 
         A reminder that invoice \(invoice.displayNumber) has a balance of \(balance), due \(due).
 
-        Grant & Deb Photography
+        \(letterhead)
         """
         service.perform(withItems: [body, url])
         return .composed
