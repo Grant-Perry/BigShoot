@@ -3,10 +3,15 @@ import SwiftUI
 
 struct DashboardOpenBook: View {
     var split: OpenBookSplit
+    var customers: [OpenInvoiceCustomer]
+    @Binding var excludedCustomers: Set<String>
     @Binding var filter: DashboardLedgerFilter
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if !customers.isEmpty {
+                DashboardOpenCustomers(customers: customers, excludedCustomers: $excludedCustomers)
+            }
             Button(action: { filter = .open }) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Still out")
@@ -28,10 +33,10 @@ struct DashboardOpenBook: View {
             .buttonStyle(.plain)
             .accessibilityHint("Show open invoices")
             if split.total == 0 {
-                Text("Nothing is open.")
+                Text(customers.isEmpty ? "Nothing is open." : "No customers selected.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: customers.isEmpty ? 120 : 44, alignment: .leading)
             } else {
                 HStack(alignment: .center, spacing: 16) {
                     donut

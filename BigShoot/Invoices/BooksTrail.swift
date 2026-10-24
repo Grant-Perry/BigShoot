@@ -34,11 +34,15 @@ enum BooksTrail {
     }
 
     static func notePayment(_ invoice: Invoice, amount: Decimal, method: PaymentMethod, in context: ModelContext) {
+        notePayment(invoice, amount: amount, methodName: method.title, in: context)
+    }
+
+    static func notePayment(_ invoice: Invoice, amount: Decimal, methodName: String, in context: ModelContext) {
         write(
             .paymentApplied,
             invoice: invoice,
             amount: amount,
-            detail: "Applied \(StudioMoney.string(amount)) by \(method.title) to \(invoice.displayNumber).",
+            detail: "Applied \(StudioMoney.string(amount)) by \(methodName) to \(invoice.displayNumber).",
             in: context
         )
     }

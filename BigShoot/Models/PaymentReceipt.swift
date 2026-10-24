@@ -28,4 +28,8 @@ final class PaymentReceipt {
         get { PaymentMethod(rawValue: methodRaw) ?? .other }
         set { methodRaw = newValue.rawValue }
     }
+
+    nonisolated var methodTitle: String {
+        PaymentMethod.displayTitle(for: methodRaw)
+    }
 }

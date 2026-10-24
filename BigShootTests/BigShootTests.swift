@@ -18,6 +18,33 @@ struct BigShootTests {
         #expect(StudioBanner.resolved("") == "BigShoot")
     }
 
+    @Test func paymentMethodCatalogStartsWithBuiltInsSorted() {
+        let catalog = PaymentMethodCatalog(defaults: isolatedDefaults("pay-empty"))
+        #expect(catalog.titles == ["Card", "Check", "Manual"])
+    }
+
+    @Test func paymentMethodCatalogSortsNewTypesAndRejectsDuplicates() {
+        let defaults = isolatedDefaults("pay-added")
+        let catalog = PaymentMethodCatalog(defaults: defaults)
+        #expect(catalog.add("  Bank Transfer  ") == .added("Bank Transfer"))
+        #expect(catalog.add("Zelle") == .added("Zelle"))
+        #expect(catalog.add("bank transfer") == .duplicate("Bank Transfer"))
+        #expect(catalog.add("CHECK") == .duplicate("Check"))
+        #expect(catalog.add("manual") == .duplicate("Manual"))
+        #expect(catalog.add("Other") == .duplicate("Other"))
+        #expect(catalog.add("   ") == .empty)
+        #expect(catalog.titles == ["Bank Transfer", "Card", "Check", "Manual", "Zelle"])
+        let reloaded = PaymentMethodCatalog(defaults: defaults)
+        #expect(reloaded.titles == ["Bank Transfer", "Card", "Check", "Manual", "Zelle"])
+    }
+
+    @Test func customPaymentMethodKeepsItsName() {
+        let receipt = PaymentReceipt(amount: 12, method: .check)
+        #expect(receipt.methodTitle == "Check")
+        receipt.methodRaw = "Bank Transfer"
+        #expect(receipt.methodTitle == "Bank Transfer")
+    }
+
     @Test func jobTypeCatalogRemembersAddedTypes() {
         let defaults = isolatedDefaults("added")
         let catalog = JobTypeCatalog(defaults: defaults)
@@ -106,7 +133,20 @@ struct BigShootTests {
         let behind = calendar.date(byAdding: .day, value: -98, to: today)!
         #expect(InvoiceMath.dueCountdown(until: ahead, now: today) == "28 days left")
         #expect(InvoiceMath.dueCountdown(until: today, now: today) == "Due today")
-        #expect(InvoiceMath.dueCountdown(until: behind, now: today) == "98 days past")
+        #expect(InvoiceMath.dueCountdown(until: behind, now: today) == "98 days past due")
+    }
+
+    @Test func daysToPayCountsFromTheInvoiceDate() {
+        let calendar = Calendar.current
+        let invoiced = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let sameDay = invoiced
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: invoiced)!
+        let later = calendar.date(byAdding: .day, value: 29, to: invoiced)!
+        let before = calendar.date(byAdding: .day, value: -2, to: invoiced)!
+        #expect(InvoiceMath.daysToPay(from: invoiced, paidAt: sameDay) == "Paid same day")
+        #expect(InvoiceMath.daysToPay(from: invoiced, paidAt: nextDay) == "Paid in 1 day")
+        #expect(InvoiceMath.daysToPay(from: invoiced, paidAt: later) == "Paid in 29 days")
+        #expect(InvoiceMath.daysToPay(from: invoiced, paidAt: before) == "2 days before the invoice")
     }
 
     @Test func blankShootQNumberShowsTheInvoiceID() throws {
@@ -552,6 +592,63 @@ struct BigShootTests {
         #expect(year.buckets.reduce(Decimal.zero) { $0 + $1.collected } == year.total)
         #expect(DashboardMath.collectedThisMonth(in: receipts, now: now, calendar: calendar) == 140)
         #expect(DashboardMath.collectedThisYear(in: receipts, now: now, calendar: calendar) == 1357)
+
+        let octoberWeek = DashboardMath.normalizedRange(
+            start: utcDate(calendar, 2026, 10, 23),
+            end: utcDate(calendar, 2026, 10, 8),
+            calendar: calendar
+        )
+        #expect(
+            octoberWeek
+                == DashboardMath.normalizedRange(
+                    start: utcDate(calendar, 2026, 10, 8),
+                    end: utcDate(calendar, 2026, 10, 23),
+                    calendar: calendar
+                )
+        )
+        let custom = DashboardMath.collectionReport(
+            receipts: receipts, window: .range, range: octoberWeek, now: now, calendar: calendar
+        )
+        #expect(custom.total == 40)
+        #expect(custom.priorTotal == 100)
+        #expect(custom.buckets.map(\.label) == ["8–14", "15–21", "22–23"])
+        #expect(custom.buckets.map(\.collected) == [0, 0, 40])
+
+        let oneDay = DashboardMath.normalizedRange(
+            start: utcDate(calendar, 2026, 10, 2),
+            end: utcDate(calendar, 2026, 10, 2),
+            calendar: calendar
+        )
+        let dayReport = DashboardMath.collectionReport(
+            receipts: receipts, window: .range, range: oneDay, now: now, calendar: calendar
+        )
+        #expect(dayReport.total == 100)
+        #expect(CollectionWindow.range.spokenTitle(covering: oneDay, calendar: calendar).contains("2026"))
+
+        let lateSummer = DashboardMath.normalizedRange(
+            start: utcDate(calendar, 2026, 8, 1),
+            end: utcDate(calendar, 2026, 10, 23),
+            calendar: calendar
+        )
+        let summer = DashboardMath.collectionReport(
+            receipts: receipts, window: .range, range: lateSummer, now: now, calendar: calendar
+        )
+        #expect(summer.total == 350)
+        #expect(summer.priorTotal == 7)
+        #expect(summer.buckets.map(\.label) == [symbols[7], symbols[8], symbols[9]])
+        #expect(summer.buckets.reduce(Decimal.zero) { $0 + $1.collected } == summer.total)
+
+        let turnOfYear = DashboardMath.normalizedRange(
+            start: utcDate(calendar, 2025, 11, 1),
+            end: utcDate(calendar, 2026, 1, 31),
+            calendar: calendar
+        )
+        let acrossYears = DashboardMath.collectionReport(
+            receipts: receipts, window: .range, range: turnOfYear, now: now, calendar: calendar
+        )
+        #expect(acrossYears.total == 1999)
+        #expect(acrossYears.buckets.count == 3)
+        #expect(acrossYears.buckets.reduce(Decimal.zero) { $0 + $1.collected } == acrossYears.total)
     }
 
     @Test func dashboardCollectedFilterFollowsTheCash() throws {
@@ -614,6 +711,23 @@ struct BigShootTests {
         )
         #expect(narrowed.map(\.invoice.number) == ["10"])
 
+        let earlyOnly = DashboardMath.normalizedRange(
+            start: utcDate(calendar, 2026, 10, 1),
+            end: utcDate(calendar, 2026, 10, 2),
+            calendar: calendar
+        )
+        let ranged = DashboardMath.ledgerItems(
+            invoices,
+            receipts: receipts,
+            filter: .cash(.range),
+            search: "",
+            range: earlyOnly,
+            now: now,
+            calendar: calendar
+        )
+        #expect(ranged.map(\.invoice.number) == ["2"])
+        #expect(ranged.map(\.periodCollected) == [5])
+
         let waitingOnly = DashboardMath.ledgerItems(
             invoices, filter: .notYetDue, search: "", now: now, calendar: calendar
         )
@@ -650,6 +764,39 @@ struct BigShootTests {
         #expect(book.current == 65)
         #expect(book.total == 365)
         #expect(book.total == DashboardMath.openBalance(in: invoices))
+    }
+
+    @Test func openCustomersGroupByNameAndDropOutOfTheTotal() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let ada = Invoice(number: "1", dueDate: .distantFuture, status: .pending, balance: 10, billToName: "Ada")
+        let adaAgain = Invoice(number: "2", dueDate: .distantFuture, status: .pending, balance: 15, billToName: "ada")
+        let bea = Invoice(
+            number: "3",
+            dueDate: Date(timeIntervalSince1970: 0),
+            status: .pending,
+            balance: 40,
+            billToName: "Bea"
+        )
+        let paid = Invoice(number: "4", status: .paid, balance: 0, billToName: "Cara")
+        let invoices = [ada, adaAgain, bea, paid]
+        for invoice in invoices {
+            context.insert(invoice)
+        }
+
+        let adaKey = DashboardMath.customerKey(for: ada)
+        #expect(adaKey == DashboardMath.customerKey(for: adaAgain))
+
+        let customers = DashboardMath.openCustomers(in: invoices)
+        #expect(customers.map(\.name) == ["Ada", "Bea"])
+        #expect(customers.map(\.balance) == [25, 40])
+
+        let book = DashboardMath.openBook(in: invoices, excluding: [adaKey])
+        #expect(book.current == 0)
+        #expect(book.overdue == 40)
+        #expect(book.total == 40)
+        #expect(DashboardMath.openBook(in: invoices).total == 65)
+        #expect(DashboardMath.openCustomers(in: [paid]).isEmpty)
     }
 
     @Test func dashboardLedgerLeadsWithTheSoonestDueDate() throws {
@@ -712,6 +859,10 @@ struct BigShootTests {
         let down = DashboardMath.comparisonCaption(current: 40, prior: 80, window: .year)
         #expect(down?.contains("below") == true)
         #expect(down?.contains("prior year") == true)
+        #expect(
+            DashboardMath.comparisonCaption(current: 10, prior: 0, window: .range)
+                == "Nothing collected in the prior period"
+        )
     }
 
     private func utcCalendar() -> Calendar {

@@ -35,11 +35,12 @@ enum DashboardMath {
     static func collectionReport(
         receipts: [PaymentReceipt],
         window: CollectionWindow,
+        range: DateInterval? = nil,
         now: Date = .now,
         calendar: Calendar = .current
     ) -> CollectionReport {
-        let span = interval(for: window, now: now, calendar: calendar)
-        let prior = priorInterval(for: window, now: now, calendar: calendar)
+        let span = interval(for: window, range: range, now: now, calendar: calendar)
+        let prior = priorInterval(for: window, range: range, now: now, calendar: calendar)
         return CollectionReport(
             total: collected(in: receipts, from: span.start, until: span.end),
             priorTotal: collected(in: receipts, from: prior.start, until: prior.end),
@@ -47,10 +48,14 @@ enum DashboardMath {
         )
     }
 
-    static func openBook(in invoices: [Invoice], now: Date = .now) -> OpenBookSplit {
+    static func openBook(
+        in invoices: [Invoice],
+        now: Date = .now,
+        excluding excludedCustomers: Set<String> = []
+    ) -> OpenBookSplit {
         var current = Decimal.zero
         var overdue = Decimal.zero
-        for invoice in invoices {
+        for invoice in invoices where includes(invoice, excluding: excludedCustomers) {
             let status = InvoiceMath.displayStatus(
                 stored: invoice.status,
                 balance: invoice.balance,
@@ -68,6 +73,39 @@ enum DashboardMath {
             }
         }
         return OpenBookSplit(current: current, overdue: overdue)
+    }
+
+    /// One row per open-invoice customer, in name order. Differently cased spellings share a row.
+    static func openCustomers(in invoices: [Invoice]) -> [OpenInvoiceCustomer] {
+        var balances: [String: Decimal] = [:]
+        var names: [String: String] = [:]
+        for invoice in invoices where invoice.holdsOpenBalance {
+            let name = customerName(for: invoice)
+            let key = customerKey(for: name)
+            balances[key, default: 0] += max(invoice.balance, 0)
+            if names[key] == nil {
+                names[key] = name
+            }
+        }
+        return balances.map { key, balance in
+            OpenInvoiceCustomer(id: key, name: names[key] ?? key, balance: balance)
+        }
+        .sorted { lhs, rhs in
+            lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    static func customerName(for invoice: Invoice) -> String {
+        let trimmed = invoice.clientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "No client" : trimmed
+    }
+
+    static func customerKey(for invoice: Invoice) -> String {
+        customerKey(for: customerName(for: invoice))
+    }
+
+    static func customerKey(for name: String) -> String {
+        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 
     static func collectedThisMonth(
@@ -90,6 +128,7 @@ enum DashboardMath {
 
     static func interval(
         for window: CollectionWindow,
+        range: DateInterval? = nil,
         now: Date,
         calendar: Calendar
     ) -> DateInterval {
@@ -103,20 +142,36 @@ enum DashboardMath {
         case .year:
             let yearStart = calendar.dateInterval(of: .year, for: now)?.start ?? currentMonth.start
             return safeInterval(from: yearStart, to: currentMonth.end)
+        case .range:
+            guard let range else { return currentMonth }
+            return safeInterval(from: range.start, to: range.end)
         }
+    }
+
+    /// Inclusive calendar days, half-open so the end date counts.
+    static func normalizedRange(start: Date, end: Date, calendar: Calendar = .current) -> DateInterval {
+        let first = calendar.startOfDay(for: min(start, end))
+        let last = calendar.startOfDay(for: max(start, end))
+        let exclusiveEnd = adding(.day, value: 1, to: last, calendar: calendar)
+        return safeInterval(from: first, to: exclusiveEnd)
     }
 
     static func priorInterval(
         for window: CollectionWindow,
+        range: DateInterval? = nil,
         now: Date,
         calendar: Calendar
     ) -> DateInterval {
-        let current = interval(for: window, now: now, calendar: calendar)
+        let current = interval(for: window, range: range, now: now, calendar: calendar)
         switch window {
         case .year:
             let start = adding(.year, value: -1, to: current.start, calendar: calendar)
             let end = adding(.year, value: -1, to: current.end, calendar: calendar)
             return safeInterval(from: start, to: end)
+        case .range:
+            let days = calendar.dateComponents([.day], from: current.start, to: current.end).day ?? 0
+            let start = adding(.day, value: -days, to: current.start, calendar: calendar)
+            return safeInterval(from: start, to: current.start)
         case .month, .threeMonths, .sixMonths:
             let start = adding(.month, value: -window.trailingMonths, to: current.start, calendar: calendar)
             return safeInterval(from: start, to: current.start)
@@ -153,6 +208,7 @@ enum DashboardMath {
         receipts: [PaymentReceipt] = [],
         filter: DashboardLedgerFilter,
         search: String,
+        range: DateInterval? = nil,
         now: Date = .now,
         calendar: Calendar = .current
     ) -> [DashboardLedgerItem] {
@@ -167,7 +223,14 @@ enum DashboardMath {
         case .all:
             chosen = sortByRecent(invoices).map { DashboardLedgerItem(invoice: $0, periodCollected: nil) }
         case .collected(let window, let bucketStart):
-            let span = collectedSpan(window: window, bucketStart: bucketStart, receipts: receipts, now: now, calendar: calendar)
+            let span = collectedSpan(
+                window: window,
+                bucketStart: bucketStart,
+                range: window == .range ? range : nil,
+                receipts: receipts,
+                now: now,
+                calendar: calendar
+            )
             chosen = collectedItems(invoices: invoices, receipts: receipts, from: span.start, until: span.end)
         }
         return chosen.filter { matches($0.invoice, search: search) }
@@ -192,14 +255,19 @@ enum DashboardMath {
 
     // MARK: - Private
 
+    private static func includes(_ invoice: Invoice, excluding excludedCustomers: Set<String>) -> Bool {
+        !excludedCustomers.contains(customerKey(for: invoice))
+    }
+
     private static func collectedSpan(
         window: CollectionWindow,
         bucketStart: Date?,
+        range: DateInterval?,
         receipts: [PaymentReceipt],
         now: Date,
         calendar: Calendar
     ) -> DateInterval {
-        let span = interval(for: window, now: now, calendar: calendar)
+        let span = interval(for: window, range: range, now: now, calendar: calendar)
         guard let bucketStart else { return span }
         let series = buckets(in: span, window: window, receipts: receipts, calendar: calendar)
         guard let bucket = series.first(where: { $0.start == bucketStart }) else { return span }
@@ -263,21 +331,44 @@ enum DashboardMath {
         receipts: [PaymentReceipt],
         calendar: Calendar
     ) -> [CollectionBucket] {
-        if window == .month {
+        switch window {
+        case .month:
             return weekBuckets(in: interval, receipts: receipts, calendar: calendar)
+        case .range:
+            return rangeBuckets(in: interval, receipts: receipts, calendar: calendar)
+        case .threeMonths, .sixMonths, .year:
+            return monthBuckets(in: interval, receipts: receipts, calendar: calendar)
         }
-        return monthBuckets(in: interval, receipts: receipts, calendar: calendar)
+    }
+
+    /// Short custom ranges stay in weeks. Longer ones use months, then years, so labels stay readable.
+    private static func rangeBuckets(
+        in interval: DateInterval,
+        receipts: [PaymentReceipt],
+        calendar: Calendar
+    ) -> [CollectionBucket] {
+        let days = calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 0
+        if days <= 62 {
+            return weekBuckets(in: interval, receipts: receipts, calendar: calendar, limit: 16)
+        }
+        if days <= 1_100 {
+            return monthBuckets(in: interval, receipts: receipts, calendar: calendar, limit: 40)
+        }
+        return yearBuckets(in: interval, receipts: receipts, calendar: calendar)
     }
 
     private static func weekBuckets(
         in interval: DateInterval,
         receipts: [PaymentReceipt],
-        calendar: Calendar
+        calendar: Calendar,
+        limit: Int = 8
     ) -> [CollectionBucket] {
+        let closing = adding(.second, value: -1, to: interval.end, calendar: calendar)
+        let includeMonth = !calendar.isDate(interval.start, equalTo: closing, toGranularity: .month)
         var buckets: [CollectionBucket] = []
         var start = interval.start
         var steps = 0
-        while start < interval.end, steps < 8 {
+        while start < interval.end, steps < limit {
             let next = adding(.day, value: 7, to: start, calendar: calendar)
             let end = min(next, interval.end)
             if end <= start { break }
@@ -285,7 +376,7 @@ enum DashboardMath {
                 CollectionBucket(
                     start: start,
                     end: end,
-                    label: daySpanLabel(from: start, until: end, calendar: calendar),
+                    label: daySpanLabel(from: start, until: end, calendar: calendar, includeMonth: includeMonth),
                     collected: collected(in: receipts, from: start, until: end)
                 )
             )
@@ -298,12 +389,15 @@ enum DashboardMath {
     private static func monthBuckets(
         in interval: DateInterval,
         receipts: [PaymentReceipt],
-        calendar: Calendar
+        calendar: Calendar,
+        limit: Int = 18
     ) -> [CollectionBucket] {
+        let closing = adding(.second, value: -1, to: interval.end, calendar: calendar)
+        let includeYear = !calendar.isDate(interval.start, equalTo: closing, toGranularity: .year)
         var buckets: [CollectionBucket] = []
         var start = interval.start
         var steps = 0
-        while start < interval.end, steps < 18 {
+        while start < interval.end, steps < limit {
             let month = monthInterval(containing: start, calendar: calendar)
             let end = min(month.end, interval.end)
             if end <= start { break }
@@ -311,7 +405,34 @@ enum DashboardMath {
                 CollectionBucket(
                     start: start,
                     end: end,
-                    label: monthLabel(for: start, calendar: calendar),
+                    label: monthLabel(for: start, calendar: calendar, includeYear: includeYear),
+                    collected: collected(in: receipts, from: start, until: end)
+                )
+            )
+            start = end
+            steps += 1
+        }
+        return buckets
+    }
+
+    private static func yearBuckets(
+        in interval: DateInterval,
+        receipts: [PaymentReceipt],
+        calendar: Calendar,
+        limit: Int = 12
+    ) -> [CollectionBucket] {
+        var buckets: [CollectionBucket] = []
+        var start = interval.start
+        var steps = 0
+        while start < interval.end, steps < limit {
+            let year = calendar.dateInterval(of: .year, for: start) ?? DateInterval(start: start, duration: 0)
+            let end = min(year.end, interval.end)
+            if end <= start { break }
+            buckets.append(
+                CollectionBucket(
+                    start: start,
+                    end: end,
+                    label: String(calendar.component(.year, from: start)),
                     collected: collected(in: receipts, from: start, until: end)
                 )
             )
@@ -346,18 +467,37 @@ enum DashboardMath {
         calendar.date(byAdding: component, value: value, to: date) ?? date
     }
 
-    private static func monthLabel(for date: Date, calendar: Calendar) -> String {
+    private static func monthLabel(for date: Date, calendar: Calendar, includeYear: Bool = false) -> String {
         let month = calendar.component(.month, from: date)
         let symbols = calendar.shortMonthSymbols
         guard symbols.indices.contains(month - 1) else { return "\(month)" }
-        return symbols[month - 1]
+        let name = symbols[month - 1]
+        guard includeYear else { return name }
+        let year = calendar.component(.year, from: date) % 100
+        return "\(name) ’\(String(format: "%02d", year))"
     }
 
-    private static func daySpanLabel(from start: Date, until end: Date, calendar: Calendar) -> String {
+    private static func daySpanLabel(
+        from start: Date,
+        until end: Date,
+        calendar: Calendar,
+        includeMonth: Bool = false
+    ) -> String {
         let startDay = calendar.component(.day, from: start)
         let last = adding(.day, value: -1, to: end, calendar: calendar)
         let endDay = calendar.component(.day, from: last)
-        if startDay == endDay { return "\(startDay)" }
-        return "\(startDay)–\(endDay)"
+        let sameMonth = calendar.isDate(start, equalTo: last, toGranularity: .month)
+        if !includeMonth, sameMonth {
+            if startDay == endDay { return "\(startDay)" }
+            return "\(startDay)–\(endDay)"
+        }
+        if sameMonth {
+            let name = monthLabel(for: start, calendar: calendar)
+            if startDay == endDay { return "\(name) \(startDay)" }
+            return "\(name) \(startDay)–\(endDay)"
+        }
+        let opening = "\(monthLabel(for: start, calendar: calendar)) \(startDay)"
+        let closing = "\(monthLabel(for: last, calendar: calendar)) \(endDay)"
+        return "\(opening)–\(closing)"
     }
 }

@@ -217,9 +217,16 @@ struct InvoiceDetailView: View {
             Text("Payments")
                 .font(.headline)
             ForEach(invoice.receipts.sorted { $0.paidAt > $1.paidAt }) { receipt in
-                HStack {
-                    Text(StudioDay.string(receipt.paidAt))
-                    Text(receipt.method.title).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Text(StudioDay.string(receipt.paidAt))
+                            Text(receipt.methodTitle).foregroundStyle(.secondary)
+                        }
+                        Text(InvoiceMath.daysToPay(from: invoice.invoiceDate, paidAt: receipt.paidAt))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Text(StudioMoney.string(receipt.amount))
                         .monospacedDigit()

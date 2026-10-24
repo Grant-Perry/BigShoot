@@ -38,6 +38,28 @@ nonisolated enum InvoiceMath {
         }
     }
 
+    /// Days from the invoice date to the payment. Same calendar day is zero.
+    static func daysToPay(from invoiceDate: Date, paidAt: Date) -> String {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: invoiceDate),
+            to: calendar.startOfDay(for: paidAt)
+        ).day ?? 0
+        switch days {
+        case ..<(-1):
+            return "\(abs(days)) days before the invoice"
+        case -1:
+            return "1 day before the invoice"
+        case 0:
+            return "Paid same day"
+        case 1:
+            return "Paid in 1 day"
+        default:
+            return "Paid in \(days) days"
+        }
+    }
+
     static func dueCountdown(until due: Date, now: Date = .now) -> String {
         let calendar = Calendar.current
         let days = calendar.dateComponents(
@@ -47,9 +69,9 @@ nonisolated enum InvoiceMath {
         ).day ?? 0
         switch days {
         case ..<(-1):
-            return "\(abs(days)) days past"
+            return "\(abs(days)) days past due"
         case -1:
-            return "1 day past"
+            return "1 day past due"
         case 0:
             return "Due today"
         case 1:

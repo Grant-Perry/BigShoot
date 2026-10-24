@@ -7,7 +7,10 @@ struct DashboardView: View {
     @Query(sort: \StudioBrand.name) private var studios: [StudioBrand]
     @AppStorage(StudioBanner.key) private var bannerText = StudioBanner.fallback
     @State private var filter: DashboardLedgerFilter = .open
+    @State private var excludedCustomers: Set<String> = []
     @State private var window: CollectionWindow = .month
+    @State private var rangeStart = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    @State private var rangeEnd = Date.now
 
     var onOpenInvoice: (PersistentIdentifier) -> Void
     var onShowInvoices: () -> Void
@@ -37,6 +40,7 @@ struct DashboardView: View {
                         invoices: invoices,
                         receipts: receipts,
                         buckets: report.buckets,
+                        range: activeRange,
                         filter: $filter,
                         onOpenInvoice: onOpenInvoice,
                         onShowInvoices: onShowInvoices,
@@ -44,8 +48,19 @@ struct DashboardView: View {
                     )
                     .frame(maxWidth: .infinity, alignment: .top)
                     VStack(spacing: StudioDesign.Spacing.grid) {
-                        DashboardCollectionChart(window: $window, filter: $filter, report: report)
-                        DashboardOpenBook(split: DashboardMath.openBook(in: invoices), filter: $filter)
+                        DashboardCollectionChart(
+                            window: $window,
+                            rangeStart: $rangeStart,
+                            rangeEnd: $rangeEnd,
+                            filter: $filter,
+                            report: report
+                        )
+                        DashboardOpenBook(
+                            split: DashboardMath.openBook(in: invoices, excluding: excludedCustomers),
+                            customers: openCustomers,
+                            excludedCustomers: $excludedCustomers,
+                            filter: $filter
+                        )
                     }
                     .frame(width: 360)
                 }
@@ -55,6 +70,17 @@ struct DashboardView: View {
         .scrollBounceBehavior(.basedOnSize)
         .background(StudioSceneBackground())
         .navigationTitle("Dashboard")
+        .onChange(of: openCustomerIDs) { _, ids in
+            excludedCustomers.formIntersection(ids)
+        }
+    }
+
+    private var openCustomers: [OpenInvoiceCustomer] {
+        DashboardMath.openCustomers(in: invoices)
+    }
+
+    private var openCustomerIDs: Set<String> {
+        Set(openCustomers.map(\.id))
     }
 
     private var primaryStudio: StudioBrand? {
@@ -62,7 +88,12 @@ struct DashboardView: View {
     }
 
     private var report: CollectionReport {
-        DashboardMath.collectionReport(receipts: receipts, window: window)
+        DashboardMath.collectionReport(receipts: receipts, window: window, range: activeRange)
+    }
+
+    private var activeRange: DateInterval? {
+        guard window == .range else { return nil }
+        return DashboardMath.normalizedRange(start: rangeStart, end: rangeEnd)
     }
 
     private var openCaption: String {

@@ -64,7 +64,7 @@ enum StudioBooksExporter {
             [line.invoice?.displayNumber ?? "", line.name, "\(line.quantity)", "\(line.unitPrice)", line.detail]
         })
         try write(folder, "payments.csv", header: ["invoice", "date", "amount", "method"], rows: receipts.map { receipt in
-            [receipt.invoice?.displayNumber ?? "", StudioDay.string(receipt.paidAt), "\(receipt.amount)", receipt.method.rawValue]
+            [receipt.invoice?.displayNumber ?? "", StudioDay.string(receipt.paidAt), "\(receipt.amount)", receipt.methodRaw]
         })
         try write(folder, "schedule.csv", header: ["invoice", "due", "amount", "paid", "balance", "status"], rows: schedule.map { entry in
             [entry.invoice?.displayNumber ?? "", StudioDay.string(entry.due), "\(entry.amount)", "\(entry.amountPaid)", "\(entry.balance)", entry.status]

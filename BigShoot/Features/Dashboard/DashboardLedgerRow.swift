@@ -24,7 +24,7 @@ struct DashboardLedgerRow: View {
                             .font(.body.weight(.medium))
                             .lineLimit(1)
                         Text(detail)
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)

@@ -3,6 +3,8 @@ import SwiftUI
 
 struct DashboardCollectionChart: View {
     @Binding var window: CollectionWindow
+    @Binding var rangeStart: Date
+    @Binding var rangeEnd: Date
     @Binding var filter: DashboardLedgerFilter
     var report: CollectionReport
 
@@ -23,7 +25,7 @@ struct DashboardCollectionChart: View {
                         .foregroundStyle(.primary)
                         .contentTransition(reduceMotion ? .identity : .numericText())
                         .animation(reduceMotion ? nil : .snappy, value: report.total)
-                    Text(window.cashCaption)
+                    Text(window.cashCaption(from: rangeStart, through: rangeEnd))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -47,15 +49,12 @@ struct DashboardCollectionChart: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Show invoices paid in this period")
-            Picker("Collected period", selection: windowSelection) {
-                ForEach(CollectionWindow.allCases) { item in
-                    Text(item.title).tag(item)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel("Collected period")
-            .accessibilityValue(window.spokenTitle)
+            CollectionPeriodPicker(
+                window: $window,
+                filter: $filter,
+                rangeStart: $rangeStart,
+                rangeEnd: $rangeEnd
+            )
             chart
                 .frame(height: 168)
             Text(selectionCaption)
@@ -77,7 +76,12 @@ struct DashboardCollectionChart: View {
     }
 
     private func showThisPeriod() {
-        windowSelection.wrappedValue = window
+        filter = .cash(window)
+    }
+
+    private var showsBarValues: Bool {
+        if window == .month { return true }
+        return window == .range && report.buckets.count <= 8
     }
 
     private var chart: some View {
@@ -92,7 +96,7 @@ struct DashboardCollectionChart: View {
             .cornerRadius(5)
             .accessibilityLabel("\(bucket.label), \(StudioMoney.string(bucket.collected)) collected")
             .annotation(position: .top, spacing: 4) {
-                if window == .month, bucket.collected > 0 {
+                if showsBarValues, bucket.collected > 0 {
                     Text(
                         DashboardMath.chartDouble(bucket.collected),
                         format: .currency(code: "USD").notation(.compactName)
@@ -125,17 +129,7 @@ struct DashboardCollectionChart: View {
             }
         }
         .chartXSelection(value: bucketSelection)
-        .animation(reduceMotion ? nil : .snappy, value: window)
-    }
-
-    private var windowSelection: Binding<CollectionWindow> {
-        Binding(
-            get: { window },
-            set: { newWindow in
-                window = newWindow
-                filter = .cash(newWindow)
-            }
-        )
+        .animation(reduceMotion ? nil : .snappy, value: report)
     }
 
     private var bucketSelection: Binding<String?> {

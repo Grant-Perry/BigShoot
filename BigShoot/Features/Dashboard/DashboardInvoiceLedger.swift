@@ -5,6 +5,7 @@ struct DashboardInvoiceLedger: View {
     var invoices: [Invoice]
     var receipts: [PaymentReceipt]
     var buckets: [CollectionBucket]
+    var range: DateInterval?
     @Binding var filter: DashboardLedgerFilter
     var onOpenInvoice: (PersistentIdentifier) -> Void
     var onShowInvoices: () -> Void
@@ -129,7 +130,13 @@ struct DashboardInvoiceLedger: View {
     }
 
     private var rows: [DashboardLedgerItem] {
-        DashboardMath.ledgerItems(invoices, receipts: receipts, filter: filter, search: search)
+        DashboardMath.ledgerItems(
+            invoices,
+            receipts: receipts,
+            filter: filter,
+            search: search,
+            range: range
+        )
     }
 
     private var countCaption: String {
@@ -152,10 +159,11 @@ struct DashboardInvoiceLedger: View {
         case .all:
             return "All"
         case .collected(let window, let start):
+            let title = window.spokenTitle(covering: range)
             if let start, let label = buckets.first(where: { $0.start == start })?.label {
-                return "\(window.spokenTitle) · \(label)"
+                return "\(title) · \(label)"
             }
-            return window.spokenTitle
+            return title
         }
     }
 

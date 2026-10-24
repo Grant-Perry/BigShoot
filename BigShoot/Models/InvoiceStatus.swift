@@ -24,12 +24,17 @@ enum PaymentMethod: String, Codable, CaseIterable, Sendable {
     case card
     case other
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .manual: "Manual"
         case .check: "Check"
         case .card: "Card"
         case .other: "Other"
         }
+    }
+
+    /// Built-in raw values stay titled. Anything else is a custom type stored as typed.
+    nonisolated static func displayTitle(for stored: String) -> String {
+        PaymentMethod(rawValue: stored)?.title ?? stored
     }
 }
