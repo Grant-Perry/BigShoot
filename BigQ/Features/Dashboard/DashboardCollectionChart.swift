@@ -81,12 +81,7 @@ struct DashboardCollectionChart: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(StudioDesign.Spacing.card)
         .studioCard()
-        .overlay {
-            if let stroke {
-                RoundedRectangle(cornerRadius: StudioDesign.Radius.card, style: .continuous)
-                    .strokeBorder(stroke.opacity(0.9), lineWidth: 1.5)
-            }
-        }
+        .studioActive(stroke != nil, color: stroke ?? StudioDesign.gold)
     }
 
     private var showsIssued: Bool {

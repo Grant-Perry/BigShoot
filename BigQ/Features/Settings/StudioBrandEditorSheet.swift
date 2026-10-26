@@ -53,6 +53,7 @@ struct StudioBrandEditorSheet: View {
         }
         .padding(24)
         .frame(width: 480)
+        .studioActive()
         .onAppear(perform: load)
     }
 

@@ -95,7 +95,9 @@ struct InvoiceWorkspace: View {
             RecordPaymentSheet(invoice: invoice)
         }
         .sheet(item: $previewInvoice) { invoice in
-            InvoicePDFPreviewSheet(invoice: invoice, note: nil)
+            InvoicePDFPreviewSheet(invoice: invoice, note: nil) {
+                submit(invoice)
+            }
         }
         .sheet(item: $editingInvoice) { invoice in
             NewInvoiceSheet(existing: invoice, onOpenInvoice: onOpenInvoice)
@@ -239,6 +241,16 @@ struct InvoiceWorkspace: View {
         case .unavailable:
             mailNote = "Mail isn’t available. Save the PDF and send it yourself."
             previewInvoice = invoice
+        }
+    }
+
+    private func submit(_ invoice: Invoice) {
+        invoice.submittedAt = .now
+        BooksTrail.noteSubmitted(invoice, in: modelContext)
+        do {
+            try modelContext.save()
+        } catch {
+            booksError = error.localizedDescription
         }
     }
 

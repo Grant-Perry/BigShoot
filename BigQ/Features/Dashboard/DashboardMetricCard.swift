@@ -12,6 +12,7 @@ struct DashboardMetricCard: View {
     var invoicedHint: String?
     var invoicedSelected: Bool = false
     var invoicedAction: (() -> Void)? = nil
+    var valueColor: Color? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -44,12 +45,7 @@ struct DashboardMetricCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(StudioDesign.Spacing.card)
         .studioCard()
-        .overlay {
-            if let emphasis {
-                RoundedRectangle(cornerRadius: StudioDesign.Radius.card, style: .continuous)
-                    .strokeBorder(emphasis.opacity(0.9), lineWidth: 1.5)
-            }
-        }
+        .studioActive(emphasis != nil, color: emphasis ?? StudioDesign.gold)
     }
 
     private var primarySelected: Bool {
@@ -73,7 +69,7 @@ struct DashboardMetricCard: View {
             .monospacedDigit()
             .minimumScaleFactor(0.55)
             .lineLimit(1)
-            .foregroundStyle(StudioDesign.money(for: colorScheme))
+            .foregroundStyle(valueColor ?? StudioDesign.money(for: colorScheme))
     }
 
     private var captionText: some View {

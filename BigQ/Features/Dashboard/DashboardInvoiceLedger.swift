@@ -12,13 +12,19 @@ struct DashboardInvoiceLedger: View {
     var onNewInvoice: () -> Void
 
     @State private var search = ""
+    @State private var sortKey: InvoiceLedgerSort = .due
+    @State private var sortAscending = true
     @State private var editingInvoice: Invoice?
     @State private var paymentInvoice: Invoice?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            scopePicker
+            DashboardLedgerControls(
+                scope: scopeBinding,
+                sort: $sortKey,
+                ascending: $sortAscending
+            )
             StudioColumnSearch(
                 text: $search,
                 prompt: "Number, client, or job",
@@ -55,17 +61,6 @@ struct DashboardInvoiceLedger: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         }
-    }
-
-    private var scopePicker: some View {
-        Picker("Which invoices", selection: scopeBinding) {
-            Text("Open").tag(Optional(InvoiceScope.open))
-            Text("Overdue").tag(Optional(InvoiceScope.overdue))
-            Text("All").tag(Optional(InvoiceScope.all))
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .accessibilityLabel("Which invoices")
     }
 
     private var scopeBinding: Binding<InvoiceScope?> {
@@ -131,13 +126,14 @@ struct DashboardInvoiceLedger: View {
     }
 
     private var rows: [DashboardLedgerItem] {
-        DashboardMath.ledgerItems(
+        let items = DashboardMath.ledgerItems(
             invoices,
             receipts: receipts,
             filter: filter,
             search: search,
             range: range
         )
+        return DashboardMath.sortedLedgerItems(items, by: sortKey, ascending: sortAscending)
     }
 
     private var countCaption: String {

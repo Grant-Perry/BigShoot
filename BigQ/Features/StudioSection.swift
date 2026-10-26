@@ -41,4 +41,5 @@ extension Notification.Name {
     static let bigShootNewInvoice = Notification.Name("BigQ.NewInvoice")
     static let bigShootImport = Notification.Name("BigQ.Import")
     static let bigShootExport = Notification.Name("BigQ.Export")
+    static let bigQAddCatalogItem = Notification.Name("BigQ.AddCatalogItem")
 }

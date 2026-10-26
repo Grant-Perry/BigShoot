@@ -23,6 +23,17 @@ enum BooksTrail {
         )
     }
 
+    static func noteSubmitted(_ invoice: Invoice, in context: ModelContext) {
+        let when = invoice.submittedAt.map { StudioStamp.string($0) } ?? "now"
+        write(
+            .submitted,
+            invoice: invoice,
+            amount: invoice.total,
+            detail: "Submitted \(invoice.displayNumber) \(when).",
+            in: context
+        )
+    }
+
     static func noteMarkedSent(_ invoice: Invoice, in context: ModelContext) {
         write(
             .markedSent,
@@ -122,7 +133,15 @@ enum BooksTrail {
         if before.closing != after.closing {
             changes.append(after.closing.isEmpty ? "Closing cleared" : "Closing updated")
         }
+        if before.submittedAt != after.submittedAt {
+            changes.append("Submitted \(submittedLabel(before.submittedAt)) → \(submittedLabel(after.submittedAt))")
+        }
         return changes
+    }
+
+    private static func submittedLabel(_ date: Date?) -> String {
+        guard let date else { return "Not submitted" }
+        return StudioStamp.string(date)
     }
 
     private static func lineChanges(before: [EditSnapshot.Line], after: [EditSnapshot.Line]) -> [String] {
@@ -227,6 +246,7 @@ extension BooksTrail {
         var shipping: Decimal
         var note: String
         var closing: String
+        var submittedAt: Date?
         var total: Decimal
         var balance: Decimal
         var lines: [Line]
@@ -244,6 +264,7 @@ extension BooksTrail {
             shipping: Decimal,
             note: String,
             closing: String = "",
+            submittedAt: Date? = nil,
             total: Decimal,
             balance: Decimal,
             lines: [Line]
@@ -260,6 +281,7 @@ extension BooksTrail {
             self.shipping = shipping
             self.note = note
             self.closing = closing
+            self.submittedAt = submittedAt
             self.total = total
             self.balance = balance
             self.lines = lines
@@ -278,6 +300,7 @@ extension BooksTrail {
             shipping = invoice.shipping
             note = invoice.note
             closing = invoice.closing
+            submittedAt = invoice.submittedAt
             total = invoice.total
             balance = invoice.balance
             lines = invoice.sortedLines.map {

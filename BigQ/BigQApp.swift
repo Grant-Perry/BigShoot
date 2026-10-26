@@ -21,10 +21,7 @@ struct BigQApp: App {
         .defaultSize(width: 1280, height: 840)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Invoice") {
-                    NotificationCenter.default.post(name: .bigShootNewInvoice, object: nil)
-                }
-                .keyboardShortcut("n")
+                NewInvoiceCommand()
                 Button("Import ShootQ…") {
                     NotificationCenter.default.post(name: .bigShootImport, object: nil)
                 }

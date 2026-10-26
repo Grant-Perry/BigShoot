@@ -41,7 +41,17 @@ final class InvoiceDraftModel {
     var shipping: Decimal = 0
     var note = ""
     var closing = ""
+    var submittedAt: Date?
+    /// Already on the books when the editor opened. Nil on a new invoice.
+    private(set) var pipelineSubmittedAt: Date?
     var lines: [DraftLine] = []
+    /// Kept so a preview can show the number and payments already on a saved invoice.
+    var issuedNumber = ""
+    private var issuedShootqID: String?
+    /// Job name last copied into a blank note. Replaced on a later job change only while the note still matches.
+    private var noteCarriedFromJob: String?
+    var amountPaid: Decimal = 0
+    var paidDate: Date?
     private var editingID: PersistentIdentifier?
     private var editingStatus: InvoiceStatus?
 
@@ -71,7 +81,21 @@ final class InvoiceDraftModel {
         contact != nil && lines.contains { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
+    /// A taxed line needs a rate. Charge Tax with nothing marked taxable can still save.
+    var isMissingTaxRate: Bool {
+        guard lines.contains(where: \.taxable) else { return false }
+        let typed = TaxRateInput.fraction(from: taxRateText) ?? 0
+        return taxRate <= 0 && typed <= 0
+    }
+
     var isEditing: Bool { editingID != nil }
+
+    /// Number shown beside “Edit invoice”. Blank on a new invoice and on a draft that has no number yet.
+    var titleNumber: String {
+        let trimmed = issuedNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return issuedShootqID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 
     /// A sent invoice keeps its status. Save does not turn it back into a draft.
     var editingSentInvoice: Bool {
@@ -97,6 +121,12 @@ final class InvoiceDraftModel {
         shipping = invoice.shipping
         note = invoice.note
         closing = invoice.closing
+        submittedAt = invoice.submittedAt
+        pipelineSubmittedAt = invoice.submittedAt
+        issuedNumber = invoice.number
+        issuedShootqID = invoice.shootqID
+        amountPaid = invoice.amountPaid
+        paidDate = invoice.paidDate
         lines = invoice.sortedLines.map { line in
             DraftLine(
                 name: line.name,
@@ -107,6 +137,17 @@ final class InvoiceDraftModel {
                 catalogItem: line.catalogItem
             )
         }
+        fillEmptyNoteFromJob()
+    }
+
+    /// A blank note prints the job name. A note the user has typed is left alone.
+    func fillEmptyNoteFromJob() {
+        let jobName = job?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let current = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stillDefault = current.isEmpty || (noteCarriedFromJob != nil && current == noteCarriedFromJob)
+        guard stillDefault, !jobName.isEmpty else { return }
+        note = jobName
+        noteCarriedFromJob = jobName
     }
 
     /// Copies the catalog row onto this invoice. Later catalog edits do not change the copy.
@@ -125,8 +166,72 @@ final class InvoiceDraftModel {
         lines.append(DraftLine(name: "", detail: "", quantity: 1, unitPrice: 0, taxable: false, catalogItem: nil))
     }
 
+    /// Submit pressed. The stamp is in the pipeline, so a later save has to confirm.
+    func noteSubmitted(_ date: Date = .now) {
+        submittedAt = date
+        pipelineSubmittedAt = date
+    }
+
     func removeLine(id: UUID) {
         lines.removeAll { $0.id == id }
+    }
+
+    /// A throwaway invoice in its own store, so preview never writes the books.
+    func makePreview(studio: StudioBrand?) throws -> InvoicePreviewSession {
+        let schema = Schema(versionedSchema: StudioSchemaV6.self)
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        let invoice = Invoice(
+            number: issuedNumber,
+            invoiceDate: invoiceDate,
+            dueDate: dueDate,
+            paidDate: paidDate,
+            status: .draft,
+            tax: tax,
+            discount: discount,
+            shipping: shipping,
+            amountPaid: amountPaid,
+            billToName: contact?.displayName ?? "",
+            note: note,
+            closing: closing
+        )
+        context.insert(invoice)
+        if let studio {
+            let copy = StudioBrand(
+                name: studio.name,
+                email: studio.email,
+                phone: studio.phone,
+                address: studio.address,
+                isPrimary: studio.isPrimary
+            )
+            context.insert(copy)
+            invoice.studio = copy
+        }
+        if let contact {
+            let copy = Contact(fullName: contact.displayName, email: contact.email)
+            context.insert(copy)
+            invoice.contact = copy
+        }
+        if let job {
+            let copy = Job(name: job.name, eventDate: job.eventDate, jobType: job.jobType)
+            context.insert(copy)
+            invoice.job = copy
+        }
+        for (position, line) in lines.enumerated() {
+            let copy = InvoiceLine(
+                name: line.name,
+                detail: line.detail,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+                position: position,
+                taxable: line.taxable
+            )
+            copy.invoice = invoice
+            context.insert(copy)
+        }
+        InvoiceMath.recalculate(invoice)
+        return InvoicePreviewSession(container: container, context: context, invoice: invoice)
     }
 
     func apply(schedule: TaxSchedule) {
@@ -185,6 +290,10 @@ final class InvoiceDraftModel {
     }
 
     func save(in context: ModelContext, markSent: Bool) throws -> Invoice {
+        if isMissingTaxRate {
+            invoiceTaxable = true
+            throw InvoiceDraftError.missingTaxRate
+        }
         let creating = editingID == nil
         let invoice = try preparedInvoice(in: context)
         let beforeEdit = creating ? nil : BooksTrail.EditSnapshot(invoice)
@@ -201,6 +310,7 @@ final class InvoiceDraftModel {
         invoice.shipping = shipping
         invoice.note = note
         invoice.closing = closing
+        invoice.submittedAt = submittedAt
         invoice.billToName = contact?.displayName ?? invoice.billToName
         replaceLines(on: invoice, in: context)
         if markSent {
@@ -219,6 +329,9 @@ final class InvoiceDraftModel {
             BooksTrail.noteCreated(invoice, in: context)
         } else if let beforeEdit {
             BooksTrail.noteEdited(invoice, before: beforeEdit, in: context)
+        }
+        if creating, invoice.submittedAt != nil {
+            BooksTrail.noteSubmitted(invoice, in: context)
         }
         try context.save()
         return invoice
@@ -258,6 +371,17 @@ final class InvoiceDraftModel {
             line.catalogItem = draft.catalogItem
             draft.catalogItem?.timesUsed += 1
             context.insert(line)
+        }
+    }
+}
+
+enum InvoiceDraftError: LocalizedError, Equatable {
+    case missingTaxRate
+
+    var errorDescription: String? {
+        switch self {
+        case .missingTaxRate:
+            "Choose a tax rate."
         }
     }
 }

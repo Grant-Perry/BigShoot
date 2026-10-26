@@ -386,6 +386,21 @@ struct BigQTests {
         #expect(detail == "Edited 1234867. Nothing on the invoice changed.")
     }
 
+    @Test func submittedStampReadsMonthDayYearAndTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: -4 * 3600)!
+        let date = calendar.date(from: DateComponents(
+            calendar: calendar,
+            timeZone: calendar.timeZone,
+            year: 2026,
+            month: 10,
+            day: 26,
+            hour: 10,
+            minute: 51
+        ))!
+        #expect(StudioStamp.string(date, calendar: calendar) == "Oct 26, '26 - 10:51 AM")
+    }
+
     @Test func taxRateUnderstandsPercentAndFraction() {
         #expect(TaxRateInput.fraction(from: "6.6") == Decimal(string: "0.066"))
         #expect(TaxRateInput.fraction(from: "6.6%") == Decimal(string: "0.066"))
@@ -440,6 +455,46 @@ struct BigQTests {
         #expect(invoice.balance == Decimal(string: "1016.00"))
         #expect(invoice.lines.first { $0.name == "Day Rate" }?.taxable == true)
         #expect(invoice.lines.first { $0.name == "Print" }?.taxable == false)
+    }
+
+    @Test func taxRateIsRequiredOnlyWhenALineIsTaxed() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let draft = InvoiceDraftModel()
+        draft.invoiceTaxable = true
+        #expect(!draft.isMissingTaxRate)
+        _ = try draft.save(in: context, markSent: false)
+
+        draft.lines = [
+            DraftLine(name: "Print", detail: "", quantity: 1, unitPrice: 50, taxable: true, catalogItem: nil)
+        ]
+        #expect(draft.isMissingTaxRate)
+        #expect(throws: InvoiceDraftError.missingTaxRate) {
+            try draft.save(in: context, markSent: false)
+        }
+        #expect(draft.invoiceTaxable)
+
+        draft.taxRateText = "6.6"
+        draft.commitTaxRate(schedules: [])
+        #expect(!draft.isMissingTaxRate)
+    }
+
+    @Test func submitStampLandsOnTheInvoice() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let invoice = Invoice(number: "1849772", status: .pending, billToName: "Snow Companies")
+        context.insert(invoice)
+        let stamp = Date(timeIntervalSince1970: 1_761_000_000)
+        invoice.submittedAt = stamp
+        BooksTrail.noteSubmitted(invoice, in: context)
+        try context.save()
+
+        let draft = InvoiceDraftModel()
+        draft.load(invoice)
+        #expect(draft.submittedAt == stamp)
+        #expect(draft.pipelineSubmittedAt == stamp)
+        let events = try context.fetch(FetchDescriptor<BooksEvent>())
+        #expect(events.contains { $0.kind == .submitted })
     }
 
     @Test func catalogEditsStayOffInvoicesAlreadyWritten() throws {
@@ -946,6 +1001,74 @@ struct BigQTests {
         #expect(DashboardMath.ledgerItems([blank], filter: .open, search: "1234867").map(\.invoice.billToName) == ["Snow"])
     }
 
+    @Test func ledgerSortsByClientDateDueAndAmount() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let calendar = utcCalendar()
+        let now = utcDate(calendar, 2026, 10, 26)
+        let adaEvening = Invoice(
+            number: "2",
+            invoiceDate: utcDate(calendar, 2026, 7, 2),
+            dueDate: utcDate(calendar, 2026, 7, 16, hour: 18),
+            status: .pending,
+            balance: 40,
+            billToName: "Ada"
+        )
+        let adaMorning = Invoice(
+            number: "3",
+            invoiceDate: utcDate(calendar, 2026, 9, 1),
+            dueDate: utcDate(calendar, 2026, 7, 16, hour: 8),
+            status: .pending,
+            balance: 40,
+            billToName: "Ada"
+        )
+        let bea = Invoice(
+            number: "1",
+            invoiceDate: utcDate(calendar, 2026, 8, 1),
+            dueDate: utcDate(calendar, 2026, 11, 20),
+            status: .pending,
+            balance: 10,
+            billToName: "Bea"
+        )
+        let undated = Invoice(
+            number: "9",
+            invoiceDate: utcDate(calendar, 2026, 6, 1),
+            dueDate: nil,
+            status: .pending,
+            balance: 80,
+            billToName: "Snow"
+        )
+        for invoice in [bea, undated, adaMorning, adaEvening] {
+            context.insert(invoice)
+        }
+        let items = [adaEvening, adaMorning, bea, undated].map {
+            DashboardLedgerItem(invoice: $0, periodCollected: nil)
+        }
+
+        #expect(InvoiceLedgerSort.allCases.map(\.title) == ["Client", "Invoice date", "Days", "Amount"])
+        #expect(InvoiceLedgerSort.due.accessibilityTitle == "Days until due or past due")
+        #expect(InvoiceLedgerSort.amount.accessibilityTitle == "Amount due")
+        #expect(InvoiceLedgerSort.client.defaultAscending)
+        #expect(InvoiceLedgerSort.due.defaultAscending)
+        #expect(!InvoiceLedgerSort.invoiceDate.defaultAscending)
+        #expect(!InvoiceLedgerSort.amount.defaultAscending)
+        #expect(InvoiceLedgerSort.due.directionPhrase(ascending: true) == "Most overdue first")
+        #expect(InvoiceLedgerSort.amount.directionPhrase(ascending: false) == "Largest amount first")
+
+        let sorted = { (key: InvoiceLedgerSort, ascending: Bool) in
+            DashboardMath.sortedLedgerItems(items, by: key, ascending: ascending, now: now, calendar: calendar)
+                .map(\.invoice.number)
+        }
+        #expect(sorted(.client, true) == ["2", "3", "1", "9"])
+        #expect(sorted(.client, false) == ["9", "1", "2", "3"])
+        #expect(sorted(.invoiceDate, true) == ["9", "2", "1", "3"])
+        #expect(sorted(.invoiceDate, false) == ["3", "1", "2", "9"])
+        #expect(sorted(.due, true) == ["2", "3", "1", "9"])
+        #expect(sorted(.due, false) == ["1", "2", "3", "9"])
+        #expect(sorted(.amount, true) == ["1", "2", "3", "9"])
+        #expect(sorted(.amount, false) == ["9", "2", "3", "1"])
+    }
+
     @Test func cashFlowPlacesOpenBalancesOnTheMonthTheyAreDue() throws {
         let container = try makeBooksContainer()
         let context = container.mainContext
@@ -1093,8 +1216,44 @@ struct BigQTests {
     }
 
     private func makeBooksContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: StudioSchemaV5.self)
+        let schema = Schema(versionedSchema: StudioSchemaV6.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [configuration])
+    }
+}
+
+struct PriceExpressionTests {
+    @Test func formulaMultipliesAndRoundsToCents() {
+        #expect(MoneyExpression.resolve("=4750*2") == Decimal(string: "9500.00"))
+        #expect(MoneyExpression.resolve("4750*2") == Decimal(string: "9500"))
+        #expect(MoneyExpression.resolve("= 4,750 × 2") == Decimal(string: "9500"))
+        #expect(MoneyExpression.resolve("$4,750.00") == Decimal(string: "4750"))
+    }
+
+    @Test func formulaHonorsPrecedenceAndParentheses() {
+        #expect(MoneyExpression.resolve("2+3*4") == Decimal(string: "14"))
+        #expect(MoneyExpression.resolve("(2+3)*4") == Decimal(string: "20"))
+        #expect(MoneyExpression.resolve("100+20.5") == Decimal(string: "120.50"))
+        #expect(MoneyExpression.resolve("-(100+20)") == Decimal(string: "-120"))
+        #expect(MoneyExpression.resolve("4750*-2") == Decimal(string: "-9500"))
+    }
+
+    @Test func formulaDividesAndRejectsJunk() {
+        #expect(MoneyExpression.resolve("10/4") == Decimal(string: "2.50"))
+        #expect(MoneyExpression.resolve("10/3") == Decimal(string: "3.33"))
+        #expect(MoneyExpression.resolve("10/6") == Decimal(string: "1.67"))
+        #expect(MoneyExpression.resolve("100/0") == nil)
+        #expect(MoneyExpression.resolve("=4750*") == nil)
+        #expect(MoneyExpression.resolve("abc") == nil)
+        #expect(MoneyExpression.resolve("") == 0)
+    }
+
+    @Test func unfinishedFormulaDoesNotReplaceThePrice() {
+        #expect(MoneyExpression.appliesWhileTyping("=4") == false)
+        #expect(MoneyExpression.appliesWhileTyping("=4750") == false)
+        #expect(MoneyExpression.appliesWhileTyping("=4750*") == false)
+        #expect(MoneyExpression.appliesWhileTyping("=4750*2") == true)
+        #expect(MoneyExpression.appliesWhileTyping("4800") == true)
+        #expect(MoneyExpression.appliesWhileTyping("") == true)
     }
 }

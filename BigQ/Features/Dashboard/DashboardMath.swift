@@ -338,6 +338,23 @@ enum DashboardMath {
         }
     }
 
+    /// Orders a ledger. Invoices with no due date stay last when sorting by days.
+    static func sortedLedgerItems(
+        _ items: [DashboardLedgerItem],
+        by sort: InvoiceLedgerSort,
+        ascending: Bool,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> [DashboardLedgerItem] {
+        items.sorted { lhs, rhs in
+            let ranked = rank(lhs, rhs, by: sort, ascending: ascending, now: now, calendar: calendar)
+            if ranked != .orderedSame {
+                return ranked == .orderedAscending
+            }
+            return lhs.invoice.displayNumber.localizedStandardCompare(rhs.invoice.displayNumber) == .orderedAscending
+        }
+    }
+
     // MARK: - Private
 
     private static func expectedAmount(_ invoice: Invoice) -> Decimal {
@@ -433,6 +450,78 @@ enum DashboardMath {
         invoices.sorted { lhs, rhs in
             if lhs.invoiceDate != rhs.invoiceDate { return lhs.invoiceDate > rhs.invoiceDate }
             return lhs.displayNumber.localizedStandardCompare(rhs.displayNumber) == .orderedAscending
+        }
+    }
+
+    private static func rank(
+        _ lhs: DashboardLedgerItem,
+        _ rhs: DashboardLedgerItem,
+        by sort: InvoiceLedgerSort,
+        ascending: Bool,
+        now: Date,
+        calendar: Calendar
+    ) -> ComparisonResult {
+        switch sort {
+        case .client:
+            return directed(
+                lhs.invoice.clientName.localizedStandardCompare(rhs.invoice.clientName),
+                ascending: ascending
+            )
+        case .invoiceDate:
+            return directed(
+                compareValues(lhs.invoice.invoiceDate, rhs.invoice.invoiceDate),
+                ascending: ascending
+            )
+        case .amount:
+            return directed(
+                compareValues(lhs.invoice.balance, rhs.invoice.balance),
+                ascending: ascending
+            )
+        case .due:
+            return compareDue(lhs.invoice, rhs.invoice, ascending: ascending, now: now, calendar: calendar)
+        }
+    }
+
+    /// Missing due dates sort after every dated invoice, in either direction.
+    private static func compareDue(
+        _ lhs: Invoice,
+        _ rhs: Invoice,
+        ascending: Bool,
+        now: Date,
+        calendar: Calendar
+    ) -> ComparisonResult {
+        switch (daysUntilDue(lhs, now: now, calendar: calendar), daysUntilDue(rhs, now: now, calendar: calendar)) {
+        case (nil, nil):
+            return .orderedSame
+        case (nil, _):
+            return .orderedDescending
+        case (_, nil):
+            return .orderedAscending
+        case let (left?, right?):
+            return directed(compareValues(left, right), ascending: ascending)
+        }
+    }
+
+    private static func daysUntilDue(_ invoice: Invoice, now: Date, calendar: Calendar) -> Int? {
+        guard let due = invoice.dueDate else { return nil }
+        return calendar.dateComponents(
+            [.day],
+            from: calendar.startOfDay(for: now),
+            to: calendar.startOfDay(for: due)
+        ).day
+    }
+
+    private static func compareValues<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        if lhs == rhs { return .orderedSame }
+        return lhs < rhs ? .orderedAscending : .orderedDescending
+    }
+
+    private static func directed(_ natural: ComparisonResult, ascending: Bool) -> ComparisonResult {
+        if ascending { return natural }
+        switch natural {
+        case .orderedAscending: return .orderedDescending
+        case .orderedDescending: return .orderedAscending
+        case .orderedSame: return .orderedSame
         }
     }
 

@@ -15,6 +15,9 @@ struct NewInvoiceSheet: View {
     @State private var jobEditor: JobEditorLaunch?
     @State private var additionalWorkJobID: PersistentIdentifier?
     @State private var bypassPrompt: JobBypass?
+    @State private var previewSession: InvoicePreviewSession?
+    @State private var confirmPipelineSave = false
+    @State private var pendingMarkSent = false
 
     private var jobs: [Job] {
         var list = draft.contact?.jobs ?? []
@@ -29,8 +32,18 @@ struct NewInvoiceSheet: View {
     var body: some View {
         @Bindable var draft = draft
         VStack(alignment: .leading, spacing: 16) {
-            Text(draft.isEditing ? "Edit invoice" : "New invoice")
-                .font(StudioDesign.displayTitle)
+            HStack(alignment: .top, spacing: 12) {
+                Text(editorTitle)
+                    .font(StudioDesign.displayTitle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Preview", systemImage: "doc.richtext", action: showPreview)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("See the invoice PDF without saving")
+            }
+            if let submitted = draft.pipelineSubmittedAt {
+                InvoicePipelineNotice(submittedAt: submitted)
+            }
             clientColumn
             if let errorMessage {
                 Text(errorMessage)
@@ -38,11 +51,14 @@ struct NewInvoiceSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             InvoiceLinesEditor(draft: draft, catalog: catalog)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
             footer
         }
         .padding(24)
-        .frame(width: 860, height: 860)
+        .frame(width: 860)
+        .fixedSize(horizontal: false, vertical: true)
+        .studioActive()
+        .focusedSceneValue(\.invoiceEditorActive, true)
         .onAppear {
             if let existing { draft.load(existing) }
         }
@@ -52,12 +68,47 @@ struct NewInvoiceSheet: View {
                 draft.job = saved
             }
         }
+        .sheet(item: $previewSession) { session in
+            InvoicePDFPreviewSheet(invoice: session.invoice, note: nil, onSubmit: submitFromPreview)
+        }
+        .alert("Overwrite this submission?", isPresented: $confirmPipelineSave) {
+            Button("Save Anyway", role: .destructive) {
+                commitSave(markSent: pendingMarkSent)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let submitted = draft.pipelineSubmittedAt {
+                Text("This invoice was submitted \(StudioStamp.string(submitted)). Saving replaces what’s already in the pipeline.")
+            }
+        }
+    }
+
+    private func submitFromPreview() {
+        let stamp = Date.now
+        draft.noteSubmitted(stamp)
+        guard let existing else { return }
+        existing.submittedAt = stamp
+        BooksTrail.noteSubmitted(existing, in: modelContext)
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func showPreview() {
+        let studio = existing?.studio ?? (try? StudioBrandDirectory.primary(in: modelContext))
+        do {
+            previewSession = try draft.makePreview(studio: studio)
+        } catch {
+            errorMessage = "Couldn’t open the preview."
+        }
     }
 
     private var clientColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 20) {
-                ContactPickerField(contacts: contacts, selection: $draft.contact)
+                ContactPickerField(contacts: contacts, selection: $draft.contact, label: "Client:")
                     .frame(maxWidth: .infinity, alignment: .leading)
                 JobMenuPicker(
                     jobs: jobs,
@@ -71,24 +122,29 @@ struct NewInvoiceSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             jobNotice
-            HStack(spacing: 20) {
-                DatePicker("Invoice date", selection: $draft.invoiceDate, displayedComponents: .date)
-                DatePicker("Due", selection: $draft.dueDate, displayedComponents: .date)
-                NetDaysField(days: $draft.netDays)
+            HStack(alignment: .top, spacing: 20) {
+                DatePicker("Invoice date:", selection: $draft.invoiceDate, displayedComponents: .date)
+                DatePicker("Due:", selection: $draft.dueDate, displayedComponents: .date)
+                VStack(alignment: .leading, spacing: 8) {
+                    NetDaysField(days: $draft.netDays)
+                    InvoiceSubmittedField(submittedAt: $draft.submittedAt)
+                }
                 Spacer(minLength: 0)
             }
             InvoiceTaxControls(draft: draft, schedules: schedules)
             HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Note")
-                    TextField("For this invoice", text: $draft.note, axis: .vertical)
-                        .lineLimit(2...4)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Closing")
-                    TextField("Thank you.", text: $draft.closing, axis: .vertical)
-                        .lineLimit(1...3)
-                }
+                invoiceText(
+                    "Note:",
+                    prompt: "Prints on the invoice",
+                    text: $draft.note,
+                    help: "Prints in small type above the sign-off."
+                )
+                invoiceText(
+                    "Sign-off:",
+                    prompt: "Thank you.",
+                    text: $draft.closing,
+                    help: "Prints at the bottom. Leave blank for Thank you."
+                )
             }
         }
         .onChange(of: draft.netDays) { _, _ in
@@ -103,6 +159,10 @@ struct NewInvoiceSheet: View {
         }
         .onChange(of: draft.job?.persistentModelID) { _, _ in
             draft.applyNetDays()
+            draft.fillEmptyNoteFromJob()
+        }
+        .onChange(of: draft.job?.name) { _, _ in
+            draft.fillEmptyNoteFromJob()
         }
         .onChange(of: draft.job?.eventDate) { _, _ in
             draft.applyNetDays()
@@ -114,6 +174,29 @@ struct NewInvoiceSheet: View {
                 draft.job = nil
             }
         }
+    }
+
+    private var editorTitle: String {
+        guard draft.isEditing else { return "New invoice" }
+        let number = draft.titleNumber
+        guard !number.isEmpty else { return "Edit invoice" }
+        return "Edit invoice: \(number)"
+    }
+
+    private func invoiceText(
+        _ title: String,
+        prompt: String,
+        text: Binding<String>,
+        help: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(prompt, text: text, axis: .vertical)
+                .lineLimit(2, reservesSpace: true)
+        }
+        .help(help)
     }
 
     @ViewBuilder
@@ -145,14 +228,6 @@ struct NewInvoiceSheet: View {
 
     private var footer: some View {
         HStack {
-            VStack(alignment: .leading) {
-                Text("Total \(StudioMoney.string(draft.total))")
-                    .font(StudioDesign.metric(20))
-                    .monospacedDigit()
-                Text("Subtotal \(StudioMoney.string(draft.subtotal)) · Tax \(StudioMoney.string(draft.tax))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
             if draft.editingSentInvoice {
@@ -273,6 +348,20 @@ struct NewInvoiceSheet: View {
     private func save(markSent: Bool) {
         draft.commitTaxRate(schedules: schedules)
         guard canCommit else { return }
+        if draft.isMissingTaxRate {
+            draft.invoiceTaxable = true
+            errorMessage = InvoiceDraftError.missingTaxRate.localizedDescription
+            return
+        }
+        if draft.pipelineSubmittedAt != nil {
+            pendingMarkSent = markSent
+            confirmPipelineSave = true
+            return
+        }
+        commitSave(markSent: markSent)
+    }
+
+    private func commitSave(markSent: Bool) {
         do {
             _ = try draft.save(in: modelContext, markSent: markSent)
             dismiss()
@@ -304,7 +393,7 @@ private struct NetDaysField: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("Net")
+            Text("Net:")
                 .accessibilityHidden(true)
             TextField("Days", value: $days, format: .number.grouping(.never))
                 .multilineTextAlignment(.trailing)

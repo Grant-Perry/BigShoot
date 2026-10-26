@@ -147,6 +147,9 @@ struct InvoiceDetailView: View {
                 if let paid = invoice.paidDate {
                     labeled("Paid", StudioDay.string(paid))
                 }
+                if let submitted = invoice.submittedAt {
+                    labeled("Submitted", StudioStamp.string(submitted))
+                }
             }
         }
         .padding(StudioDesign.Spacing.card)

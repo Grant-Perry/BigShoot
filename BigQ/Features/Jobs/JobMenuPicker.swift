@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -12,28 +13,26 @@ struct JobMenuPicker: View {
     var onEdit: (Job) -> Void
 
     @State private var isOpen = false
+    @State private var copiedName = false
+    @State private var copyToken = 0
 
     private var title: String {
         selection?.displayName ?? "No job"
     }
 
+    /// The name shown in the picker. Empty until a job with a real name is selected.
+    private var copyableName: String? {
+        guard let name = selection?.name.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else { return nil }
+        return name
+    }
+
     var body: some View {
-        LabeledContent("Job") {
-            Button {
-                isOpen.toggle()
-            } label: {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+        LabeledContent("Job:") {
+            HStack(spacing: 6) {
+                jobButton
+                copyButton
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel("Job")
-            .accessibilityValue(title)
         }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             JobMenuList(
@@ -54,6 +53,58 @@ struct JobMenuPicker: View {
                     onEdit(job)
                 }
             )
+        }
+    }
+
+    private var jobButton: some View {
+        Button {
+            isOpen.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Job:")
+        .accessibilityValue(title)
+        .contextMenu {
+            Button("Copy Job Name", systemImage: "doc.on.doc") {
+                copyJobName()
+            }
+            .disabled(copyableName == nil)
+        }
+    }
+
+    private var copyButton: some View {
+        Button(action: copyJobName) {
+            Image(systemName: copiedName ? "checkmark" : "doc.on.doc")
+                .font(.body)
+                .frame(width: 16, height: 16)
+                .foregroundStyle(copiedName ? StudioDesign.gold : Color.primary)
+        }
+        .buttonStyle(.bordered)
+        .disabled(copyableName == nil)
+        .help(copiedName ? "Copied" : "Copy job name")
+        .accessibilityLabel("Copy job name")
+    }
+
+    private func copyJobName() {
+        guard let copyableName else { return }
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(copyableName, forType: .string)
+        copiedName = true
+        copyToken += 1
+        let token = copyToken
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            guard copyToken == token else { return }
+            copiedName = false
         }
     }
 }

@@ -64,6 +64,7 @@ struct RecordPaymentSheet: View {
         }
         .padding(24)
         .frame(width: 420)
+        .studioActive()
     }
 
     private func handleMethodTag(_ tag: MethodMenuTag) {

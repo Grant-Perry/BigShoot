@@ -52,12 +52,10 @@ struct DashboardOpenBook: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(StudioDesign.Spacing.card)
         .studioCard()
-        .overlay {
-            if filter == .open || filter == .notYetDue || filter == .overdue {
-                RoundedRectangle(cornerRadius: StudioDesign.Radius.card, style: .continuous)
-                    .strokeBorder(ringColor.opacity(0.9), lineWidth: 1.5)
-            }
-        }
+        .studioActive(
+            filter == .open || filter == .notYetDue || filter == .overdue,
+            color: ringColor
+        )
     }
 
     private var donut: some View {
@@ -115,7 +113,7 @@ struct DashboardOpenBook: View {
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
-                            .foregroundStyle(StudioDesign.money(for: colorScheme))
+                            .foregroundStyle(amountColor(for: kind))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
@@ -177,5 +175,12 @@ struct DashboardOpenBook: View {
         case .current: StudioDesign.gold
         case .overdue: StudioDesign.rose
         }
+    }
+
+    private func amountColor(for kind: OpenBookSplit.Kind) -> Color {
+        if kind == .overdue, split.amount(for: kind) > 0 {
+            return .gpNegative
+        }
+        return StudioDesign.money(for: colorScheme)
     }
 }

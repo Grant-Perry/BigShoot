@@ -5,6 +5,7 @@ struct DashboardMetricStrip: View {
     var openCaption: String
     var overdueBalance: String
     var overdueCaption: String
+    var overdueValueColor: Color? = nil
     var monthCollected: String
     var yearCollected: String
     var yearCaption: String
@@ -36,7 +37,8 @@ struct DashboardMetricStrip: View {
                 symbol: "clock.badge.exclamationmark",
                 emphasis: filter == .overdue ? StudioDesign.rose : nil,
                 hint: "Show overdue invoices",
-                action: { filter = .overdue }
+                action: { filter = .overdue },
+                valueColor: overdueValueColor
             )
             DashboardMetricCard(
                 title: "This month",

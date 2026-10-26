@@ -63,6 +63,17 @@ enum StudioSchemaV5: VersionedSchema {
     }
 }
 
+/// Adds the submitted stamp. Opened directly, same as V5, so the new column migrates in place.
+enum StudioSchemaV6: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(6, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV5.models
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

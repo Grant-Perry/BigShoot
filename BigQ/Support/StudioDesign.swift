@@ -8,6 +8,16 @@ enum StudioDesign {
     static let paid = Color(red: 0.38, green: 0.62, blue: 0.42)
     static let ink = Color(red: 0.08, green: 0.09, blue: 0.13)
 
+    /// Charcoal night, stepped. The room stays darkest, cards sit on it,
+    /// and paper — the section you're editing — is the lightest dark.
+    enum Surface {
+        static let sceneLead = Color(red: 0.14, green: 0.15, blue: 0.20)
+        static let scene = Color(red: 0.12, green: 0.13, blue: 0.17)
+        static let sceneWarm = Color(red: 0.16, green: 0.14, blue: 0.12)
+        static let card = Color(red: 0.17, green: 0.19, blue: 0.24)
+        static let paper = Color(red: 0.23, green: 0.24, blue: 0.28)
+    }
+
     /// Calculated totals. `.gpMoney` on the night scene; the same mint pulled down so it reads on paper.
     static func money(for scheme: ColorScheme) -> Color {
         scheme == .dark ? .gpMoney : Color(red: 0.11, green: 0.40, blue: 0.24)
@@ -48,6 +58,27 @@ nonisolated enum StudioDay {
     }
 }
 
+/// Pipeline stamp, such as Oct 26, '26 - 10:51 AM.
+nonisolated enum StudioStamp {
+    static func string(_ date: Date, calendar: Calendar = .current) -> String {
+        let day = calendar.component(.day, from: date)
+        let year = calendar.component(.year, from: date) % 100
+        let month = formatted(date, format: "MMM", calendar: calendar)
+        let time = formatted(date, format: "h:mm a", calendar: calendar)
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+        return "\(month) \(day), '\(String(format: "%02d", year)) - \(time)"
+    }
+
+    private static func formatted(_ date: Date, format: String, calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = format
+        return formatter.string(from: date)
+    }
+}
+
 extension View {
     /// Large content pane. Gradient wash, not Liquid Glass and not a scroll material.
     func studioCard(cornerRadius: CGFloat = StudioDesign.Radius.card) -> some View {
@@ -58,6 +89,15 @@ extension View {
     func paperCard(cornerRadius: CGFloat = StudioDesign.Radius.card) -> some View {
         modifier(PaperCardModifier(cornerRadius: cornerRadius))
     }
+
+    /// The card or sheet you are in. Heavier than the resting hairline, with a glow behind the stroke.
+    func studioActive(
+        _ active: Bool = true,
+        color: Color = StudioDesign.gold,
+        cornerRadius: CGFloat = StudioDesign.Radius.card
+    ) -> some View {
+        modifier(StudioActiveStrokeModifier(active: active, color: color, cornerRadius: cornerRadius))
+    }
 }
 
 struct StudioSceneBackground: View {
@@ -67,9 +107,9 @@ struct StudioSceneBackground: View {
         LinearGradient(
             colors: colorScheme == .dark
                 ? [
-                    Color(red: 0.10, green: 0.11, blue: 0.16),
-                    StudioDesign.ink,
-                    Color(red: 0.12, green: 0.10, blue: 0.09),
+                    StudioDesign.Surface.sceneLead,
+                    StudioDesign.Surface.scene,
+                    StudioDesign.Surface.sceneWarm,
                 ]
                 : [
                     Color(red: 0.96, green: 0.95, blue: 0.92),
@@ -131,7 +171,7 @@ private struct StudioCardModifier: ViewModifier {
         content
             .background {
                 shape.fill(dark
-                    ? Color(red: 0.11, green: 0.13, blue: 0.18).opacity(0.94)
+                    ? StudioDesign.Surface.card.opacity(0.97)
                     : Color(red: 0.99, green: 0.98, blue: 0.96).opacity(0.94))
                 shape.fill(
                     LinearGradient(
@@ -161,6 +201,28 @@ private struct StudioCardModifier: ViewModifier {
     }
 }
 
+private struct StudioActiveStrokeModifier: ViewModifier {
+    var active: Bool
+    var color: Color
+    var cornerRadius: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        content
+            .overlay {
+                if active {
+                    shape
+                        .stroke(color.opacity(colorScheme == .dark ? 0.55 : 0.38), lineWidth: 8)
+                        .blur(radius: 6)
+                    shape
+                        .strokeBorder(color, lineWidth: 3)
+                }
+            }
+            .shadow(color: active ? color.opacity(colorScheme == .dark ? 0.42 : 0.26) : .clear, radius: 14)
+    }
+}
+
 private struct PaperCardModifier: ViewModifier {
     var cornerRadius: CGFloat
     @Environment(\.colorScheme) private var colorScheme
@@ -171,11 +233,11 @@ private struct PaperCardModifier: ViewModifier {
         content
             .background {
                 shape.fill(dark
-                    ? Color(red: 0.14, green: 0.14, blue: 0.16)
+                    ? StudioDesign.Surface.paper
                     : Color(red: 0.99, green: 0.98, blue: 0.95))
             }
             .overlay {
-                shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                shape.strokeBorder(Color.primary.opacity(dark ? 0.14 : 0.08), lineWidth: 1)
             }
     }
 }

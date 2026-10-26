@@ -10,44 +10,70 @@ struct InvoiceTaxControls: View {
     @FocusState private var rateFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle("Invoice Taxable", isOn: $draft.invoiceTaxable)
-                .toggleStyle(.checkbox)
-            HStack(spacing: 8) {
-                Text("Tax")
-                TextField("Rate", text: $draft.taxRateText)
-                    .focused($rateFocused)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 72)
-                    .onSubmit { draft.commitTaxRate(schedules: schedules) }
-                Text("%")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Toggle("Charge Tax:", isOn: $draft.invoiceTaxable)
+                    .toggleStyle(.checkbox)
+                    .fixedSize()
+                Text(draft.invoiceTaxable ? StudioMoney.string(draft.tax) : "No tax")
+                    .font(.callout)
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
-                Picker("Schedule", selection: schedulePick) {
-                    Text("None").tag(SchedulePick.none)
-                    ForEach(schedules) { schedule in
-                        Text("\(schedule.name) · \(TaxRateInput.percentText(for: schedule.rate))%")
-                            .tag(SchedulePick.saved(schedule.persistentModelID))
+                    .accessibilityLabel("Tax amount")
+                if draft.invoiceTaxable {
+                    HStack(spacing: 8) {
+                        Text("Rate:")
+                            .foregroundStyle(.secondary)
+                        TextField("Rate", text: $draft.taxRateText)
+                            .focused($rateFocused)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 64)
+                            .onSubmit { draft.commitTaxRate(schedules: schedules) }
+                            .accessibilityLabel("Tax rate")
+                        Text("%")
+                            .foregroundStyle(.secondary)
+                        Text("Saved rate:")
+                            .foregroundStyle(.secondary)
+                        Picker("Saved rate:", selection: schedulePick) {
+                            Text("Custom rate").tag(SchedulePick.none)
+                            ForEach(schedules) { schedule in
+                                Text("\(schedule.name) · \(TaxRateInput.percentText(for: schedule.rate))%")
+                                    .tag(SchedulePick.saved(schedule.persistentModelID))
+                            }
+                            Divider()
+                            Text("Add Schedule…").tag(SchedulePick.add)
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 200)
                     }
-                    Divider()
-                    Text("Add Schedule…").tag(SchedulePick.add)
                 }
-                .frame(maxWidth: 200)
             }
-            .disabled(!draft.invoiceTaxable)
-            Text("Tax amount \(StudioMoney.string(draft.tax))")
+            Text(taxExplanation)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .disabled(!draft.invoiceTaxable)
+                .lineLimit(1)
         }
         .onChange(of: rateFocused) { _, focused in
             if !focused { draft.commitTaxRate(schedules: schedules) }
         }
+        .onChange(of: draft.invoiceTaxable) { _, isOn in
+            guard isOn else { return }
+            Task { @MainActor in
+                rateFocused = true
+            }
+        }
+        .animation(.smooth(duration: 0.15), value: draft.invoiceTaxable)
         .sheet(isPresented: $addingSchedule) {
             TaxScheduleSheet(startingRate: draft.taxRateText) { schedule in
                 draft.apply(schedule: schedule)
             }
         }
+    }
+
+    private var taxExplanation: String {
+        draft.invoiceTaxable
+            ? "Added only on lines with Tax checked."
+            : "Off for this invoice. Line checkboxes stay as they are."
     }
 
     private var schedulePick: Binding<SchedulePick> {
@@ -123,6 +149,7 @@ private struct TaxScheduleSheet: View {
         }
         .padding(24)
         .frame(width: 420)
+        .studioActive()
         .onAppear { rateText = startingRate }
         .onChange(of: rateFocused) { _, focused in
             if !focused { commitRate() }

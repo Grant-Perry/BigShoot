@@ -48,12 +48,7 @@ struct DashboardCashFlowChart: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(StudioDesign.Spacing.card)
         .studioCard()
-        .overlay {
-            if filter.isExpected {
-                RoundedRectangle(cornerRadius: StudioDesign.Radius.card, style: .continuous)
-                    .strokeBorder(flowColor.opacity(0.9), lineWidth: 1.5)
-            }
-        }
+        .studioActive(filter.isExpected, color: flowColor)
     }
 
     @ViewBuilder

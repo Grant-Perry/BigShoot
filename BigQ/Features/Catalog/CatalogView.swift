@@ -149,6 +149,7 @@ private struct CatalogItemSheet: View {
     @State private var taxable = false
     @State private var errorMessage: String?
     @FocusState private var nameFocused: Bool
+    @FocusState private var priceFocus: CatalogPriceFocus?
 
     private var isEditing: Bool { item != nil }
 
@@ -158,7 +159,13 @@ private struct CatalogItemSheet: View {
                 .font(StudioDesign.displayTitle)
             TextField("Name", text: $name)
                 .focused($nameFocused)
-            TextField("Default price", value: $price, format: .number.precision(.fractionLength(2)))
+            ExpressionPriceField(
+                value: $price,
+                prompt: "Default price",
+                focus: $priceFocus,
+                tag: .price,
+                alignment: .leading
+            )
             TextField("Detail", text: $detail, axis: .vertical)
                 .lineLimit(4...8)
             Toggle("Taxable", isOn: $taxable)
@@ -182,6 +189,7 @@ private struct CatalogItemSheet: View {
         }
         .padding(24)
         .frame(width: 440)
+        .studioActive()
         .onAppear(perform: load)
     }
 
@@ -231,4 +239,8 @@ private struct CatalogItemSheet: View {
             errorMessage = "That name is already in the catalog."
         }
     }
+}
+
+private enum CatalogPriceFocus: Hashable {
+    case price
 }

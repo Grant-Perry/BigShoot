@@ -28,8 +28,9 @@ struct DashboardView: View {
                     DashboardMetricStrip(
                         openBalance: StudioMoney.string(DashboardMath.openBalance(in: invoices)),
                         openCaption: openCaption,
-                        overdueBalance: StudioMoney.string(DashboardMath.overdueBalance(in: invoices)),
+                        overdueBalance: StudioMoney.string(overdueBalance),
                         overdueCaption: overdueCaption,
+                        overdueValueColor: overdueBalance > 0 ? .gpNegative : nil,
                         monthCollected: StudioMoney.string(DashboardMath.collectedThisMonth(in: receipts)),
                         yearCollected: StudioMoney.string(DashboardMath.collectedThisYear(in: receipts)),
                         yearCaption: yearCaption,
@@ -113,6 +114,10 @@ struct DashboardView: View {
     private var openCaption: String {
         let count = DashboardMath.openCount(in: invoices)
         return count == 1 ? "1 open invoice" : "\(count) open invoices"
+    }
+
+    private var overdueBalance: Decimal {
+        DashboardMath.overdueBalance(in: invoices)
     }
 
     private var overdueCaption: String {

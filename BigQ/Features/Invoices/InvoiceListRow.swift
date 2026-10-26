@@ -40,6 +40,11 @@ struct InvoiceListRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+                if invoice.submittedAt != nil {
+                    Text("Submitted")
+                        .font(.caption)
+                        .foregroundStyle(Color.gpWarning)
+                }
                 if invoice.displayStatus == .overdue {
                     StatusBadge(status: .overdue, title: "OVERDUE")
                 }

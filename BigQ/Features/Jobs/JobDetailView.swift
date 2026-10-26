@@ -141,6 +141,7 @@ struct JobEditorSheet: View {
         }
         .padding(24)
         .frame(width: 520)
+        .studioActive()
         .alert("Add Type", isPresented: $showAddType) {
             TextField("Type", text: $newTypeName)
             Button("Add", action: commitNewType)
@@ -211,44 +212,4 @@ struct JobEditorSheet: View {
 private enum JobTypeMenuTag: Hashable {
     case add
     case type(String)
-}
-
-struct ContactPickerField: View {
-    let contacts: [Contact]
-    @Binding var selection: Contact?
-    @State private var query = ""
-
-    private var matches: [Contact] {
-        let active = contacts.filter { !$0.archived }
-        guard !query.isEmpty else { return Array(active.prefix(6)) }
-        return active.filter {
-            $0.displayName.localizedStandardContains(query) || $0.email.localizedStandardContains(query)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("Client", text: $query)
-            if selection?.displayName != query {
-                ForEach(matches.prefix(6)) { contact in
-                    Button {
-                        selection = contact
-                        query = contact.displayName
-                    } label: {
-                        VStack(alignment: .leading) {
-                            Text(contact.displayName)
-                            if !contact.email.isEmpty {
-                                Text(contact.email)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .onAppear { query = selection?.displayName ?? "" }
-    }
 }

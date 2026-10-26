@@ -29,6 +29,8 @@ final class Invoice {
     var note: String
     /// Sign-off printed at the bottom of the PDF. Empty uses “Thank you.”
     var closing: String = ""
+    /// When this invoice was handed to the pipeline. Nil until it is marked submitted.
+    var submittedAt: Date?
     var isImported: Bool
 
     var contact: Contact?
@@ -66,6 +68,7 @@ final class Invoice {
         billToName: String = "",
         note: String = "",
         closing: String = "",
+        submittedAt: Date? = nil,
         isImported: Bool = false
     ) {
         self.shootqID = shootqID
@@ -88,6 +91,7 @@ final class Invoice {
         self.billToName = billToName
         self.note = note
         self.closing = closing
+        self.submittedAt = submittedAt
         self.isImported = isImported
         self.lines = []
         self.schedule = []
