@@ -74,6 +74,40 @@ enum StudioSchemaV6: VersionedSchema {
     }
 }
 
+/// Adds ShootQ contracts and the signature rows that tie them to a client.
+enum StudioSchemaV7: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(7, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV6.models + [Contract.self, ContractSignature.self]
+    }
+}
+
+/// Adds the studio logo. Opened directly, same as V7, so the new columns migrate in place.
+enum StudioSchemaV8: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(8, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV7.models
+    }
+}
+
+/// Adds a stable archive id so a backup can match records on another Mac.
+/// Opened directly, same as V8, so the new column migrates in place.
+enum StudioSchemaV9: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(9, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV8.models
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

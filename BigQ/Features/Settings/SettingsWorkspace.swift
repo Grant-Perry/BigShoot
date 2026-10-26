@@ -27,6 +27,8 @@ struct SettingsWorkspace: View {
                 StudioBrandWorkspace(selection: $studioID)
             case .banner:
                 BannerSettingsView()
+            case .backup:
+                BackupSettingsView()
             }
         }
     }

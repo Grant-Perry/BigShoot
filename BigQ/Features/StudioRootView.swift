@@ -51,6 +51,7 @@ struct StudioRootView: View {
                 DebugPrint(mode: .error, "Could not prepare studios: \(error.localizedDescription)")
             }
             importModel.offerIfNeeded()
+            await ShootQImporter(context: modelContext) { _, _ in }.importContractsIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .bigShootNewInvoice)) { _ in
             showNewInvoice = true

@@ -28,6 +28,11 @@ struct JobDetailView: View {
                 .paperCard()
                 .textSelection(.enabled)
 
+                ContractListSection(
+                    contracts: ContractLinks.forJob(job),
+                    emptyMessage: "No contracts for this job."
+                )
+
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Invoices", systemImage: "doc.text")
                         .font(.headline)

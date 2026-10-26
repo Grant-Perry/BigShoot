@@ -390,3 +390,22 @@ enum ShootQLineLoader {
         return (lines, skipped)
     }
 }
+
+struct ShootQContract: Decodable {
+    let id: Int
+    let contents: String?
+    let eventDate: String?
+    let job: Int?
+    let sent: String?
+    let signatures: [ShootQContractSignature]?
+    let status: String?
+    let title: String?
+}
+
+struct ShootQContractSignature: Decodable {
+    let displayName: String?
+    let completed: Bool?
+    let contactId: Int?
+    let ipAddress: String?
+    let modified: String?
+}

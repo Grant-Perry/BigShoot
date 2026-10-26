@@ -15,20 +15,7 @@ struct StudioBrandDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: StudioDesign.Spacing.section) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(studio.displayName)
-                        .font(StudioDesign.displayHero)
-                    if studio.isPrimary {
-                        Text("Primary studio")
-                            .font(.title3)
-                            .foregroundStyle(StudioDesign.gold)
-                    }
-                }
-                .textSelection(.enabled)
-
-                Text(roleLine)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                StudioBrandIdentityHeader(studio: studio, roleLine: roleLine)
 
                 VStack(alignment: .leading, spacing: 12) {
                     field("Name", text: $name, prompt: "Studio name")

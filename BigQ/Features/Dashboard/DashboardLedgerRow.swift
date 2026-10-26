@@ -17,7 +17,7 @@ struct DashboardLedgerRow: View {
             Button(action: onSelect) {
                 HStack(alignment: .center, spacing: 12) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(amountColor)
+                        .fill(railColor)
                         .frame(width: 3)
                         .padding(.vertical, 4)
                         .accessibilityHidden(true)
@@ -60,7 +60,18 @@ struct DashboardLedgerRow: View {
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
-                        StatusBadge(status: invoice.displayStatus)
+                        HStack(spacing: 6) {
+                            if let submitted = invoice.submittedAt {
+                                Text("Submitted: \(StudioDay.string(submitted))")
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.gpGreen.opacity(0.18), in: Capsule())
+                                    .foregroundStyle(Color.gpGreen)
+                            }
+                            StatusBadge(status: invoice.displayStatus)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,6 +128,12 @@ struct DashboardLedgerRow: View {
             }
             return "\(number) · \(StudioDay.string(invoice.invoiceDate))"
         }
+    }
+
+    /// Submitted invoices wear green on the rail. The amount keeps its status color.
+    private var railColor: Color {
+        if invoice.submittedAt != nil { return .gpGreen }
+        return amountColor
     }
 
     private var amountColor: Color {

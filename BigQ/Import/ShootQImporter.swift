@@ -9,6 +9,7 @@ struct ShootQImportSummary {
     var receipts = 0
     var lines = 0
     var catalog = 0
+    var contracts = 0
     var skippedPartialLines = 0
     var lineSource = "none"
 }
@@ -80,6 +81,9 @@ struct ShootQImporter {
         try context.save()
         summary.jobs = jobRows.count
 
+        await report("Reading contracts", 0.44)
+        summary.contracts = try await importContracts(from: folder, contacts: contacts, jobs: jobs)
+
         await report("Reading invoices", 0.46)
         let invoiceRows = try loadJSON("invoices.json", as: [ShootQInvoice].self, from: folder)
         var invoices = try indexed(Invoice.self)
@@ -144,8 +148,87 @@ struct ShootQImporter {
         summary.lines = lineCount
         summary.catalog = catalog.count
         await report("Books are in", 1)
-        DebugPrint(mode: .import, "Imported \(summary.contacts) contacts, \(summary.invoices) invoices, \(summary.lines) lines from \(summary.lineSource)")
+        DebugPrint(mode: .import, "Imported \(summary.contacts) contacts, \(summary.invoices) invoices, \(summary.contracts) contracts, \(summary.lines) lines from \(summary.lineSource)")
         return summary
+    }
+
+    /// Books imported before contracts existed get them on the next launch.
+    func importContractsIfNeeded() async {
+        do {
+            let count = try context.fetchCount(FetchDescriptor<Contract>())
+            guard count == 0 else { return }
+            guard let folder = ShootQImportModel.candidateFolder() else { return }
+            let accessing = folder.startAccessingSecurityScopedResource()
+            defer {
+                if accessing { folder.stopAccessingSecurityScopedResource() }
+            }
+            let previousAutosave = context.autosaveEnabled
+            context.autosaveEnabled = false
+            defer { context.autosaveEnabled = previousAutosave }
+            let imported = try await importContracts(from: folder)
+            DebugPrint(mode: .import, "Attached \(imported) ShootQ contracts")
+        } catch {
+            DebugPrint(mode: .error, "Could not attach ShootQ contracts: \(error.localizedDescription)")
+        }
+    }
+
+    @discardableResult
+    private func importContracts(
+        from folder: URL,
+        contacts: [String: Contact]? = nil,
+        jobs: [String: Job]? = nil
+    ) async throws -> Int {
+        let rows = try loadJSON("contracts.json", as: [ShootQContract].self, from: folder)
+        let contacts = try contacts ?? indexed(Contact.self)
+        let jobs = try jobs ?? indexed(Job.self)
+        var contracts = try indexed(Contract.self)
+        for (offset, row) in rows.enumerated() {
+            upsertContract(row, contacts: contacts, jobs: jobs, into: &contracts)
+            if offset % 40 == 39 {
+                try context.save()
+                await report("Saving contracts", 0.44)
+            }
+        }
+        try context.save()
+        return rows.count
+    }
+
+    private func upsertContract(
+        _ row: ShootQContract,
+        contacts: [String: Contact],
+        jobs: [String: Job],
+        into map: inout [String: Contract]
+    ) {
+        let key = String(row.id)
+        let contract = map[key] ?? Contract(shootqID: key)
+        if map[key] == nil {
+            context.insert(contract)
+            map[key] = contract
+        }
+        let title = (row.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        contract.title = title.isEmpty ? "Untitled contract" : title
+        contract.status = row.status ?? ""
+        contract.html = row.contents ?? ""
+        contract.eventLabel = row.eventDate ?? ""
+        contract.sentAt = ShootQDates.parse(row.sent)
+        if let jobID = row.job {
+            contract.job = jobs[String(jobID)]
+        }
+        guard contract.signatures.isEmpty else { return }
+        for signature in row.signatures ?? [] {
+            let name = (signature.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let contactID = signature.contactId.map(String.init)
+            let record = ContractSignature(
+                displayName: name,
+                completed: signature.completed ?? false,
+                signedAt: (signature.completed ?? false) ? ShootQDates.parse(signature.modified) : nil,
+                ipAddress: signature.ipAddress ?? "",
+                shootqContactID: contactID,
+                contact: contactID.flatMap { contacts[$0] }
+            )
+            record.contract = contract
+            context.insert(record)
+        }
     }
 
     // MARK: - Contacts
@@ -391,6 +474,7 @@ struct ShootQImporter {
         case let invoice as Invoice: invoice.shootqID
         case let entry as PaymentScheduleEntry: entry.shootqID
         case let receipt as PaymentReceipt: receipt.shootqID
+        case let contract as Contract: contract.shootqID
         default: nil
         }
     }

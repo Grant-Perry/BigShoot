@@ -32,6 +32,8 @@ final class Invoice {
     /// When this invoice was handed to the pipeline. Nil until it is marked submitted.
     var submittedAt: Date?
     var isImported: Bool
+    /// Stable id written into a backup. Empty until the first backup stamps it.
+    var archiveID: String = ""
 
     var contact: Contact?
     var job: Job?

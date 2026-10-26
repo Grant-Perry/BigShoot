@@ -10,7 +10,7 @@ final class PaymentMethodCatalog {
         case empty
     }
 
-    private static let storageKey = "BigQ.paymentMethods"
+    static let storageKey = "BigQ.paymentMethods"
     private static let builtInKeys = [
         PaymentMethod.card.rawValue,
         PaymentMethod.check.rawValue,

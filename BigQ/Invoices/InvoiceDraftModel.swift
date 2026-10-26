@@ -178,7 +178,7 @@ final class InvoiceDraftModel {
 
     /// A throwaway invoice in its own store, so preview never writes the books.
     func makePreview(studio: StudioBrand?) throws -> InvoicePreviewSession {
-        let schema = Schema(versionedSchema: StudioSchemaV6.self)
+        let schema = Schema(versionedSchema: StudioSchemaV9.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = ModelContext(container)
@@ -203,7 +203,9 @@ final class InvoiceDraftModel {
                 email: studio.email,
                 phone: studio.phone,
                 address: studio.address,
-                isPrimary: studio.isPrimary
+                isPrimary: studio.isPrimary,
+                logoImageData: studio.logoImageData,
+                logoImageSourceData: studio.logoImageSourceData
             )
             context.insert(copy)
             invoice.studio = copy

@@ -11,6 +11,8 @@ final class CatalogItem {
     /// Default for the next invoice line copied from this item. Nil on rows written before tax schedules, which means not taxable.
     var taxable: Bool?
     var timesUsed: Int
+    /// Stable id written into a backup. Empty until the first backup stamps it.
+    var archiveID: String = ""
 
     @Relationship(deleteRule: .nullify, inverse: \InvoiceLine.catalogItem)
     var lines: [InvoiceLine]

@@ -11,6 +11,8 @@ final class BooksEvent {
     var clientName: String
     var amount: Decimal
     var detail: String
+    /// Stable id written into a backup. Empty until the first backup stamps it.
+    var archiveID: String = ""
 
     init(
         occurredAt: Date = .now,

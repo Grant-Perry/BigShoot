@@ -52,6 +52,11 @@ struct ContactDetailView: View {
                     }
                 }
 
+                ContractListSection(
+                    contracts: ContractLinks.forContact(contact),
+                    emptyMessage: "No contracts for this client."
+                )
+
                 linkedSection("Invoices", symbol: "doc.text") {
                     if contact.invoices.isEmpty {
                         Text("No invoices yet.")

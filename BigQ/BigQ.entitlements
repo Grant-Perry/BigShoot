@@ -20,6 +20,7 @@
 		<string>Xcode/BigQ/shootq-export/applied-payments.json</string>
 		<string>Xcode/BigQ/shootq-export/invoice-line-items.csv</string>
 		<string>Xcode/BigQ/shootq-export/invoice-line-items.jsonl</string>
+		<string>Xcode/BigQ/shootq-export/contracts.json</string>
 	</array>
 </dict>
 </plist>

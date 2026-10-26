@@ -1,4 +1,7 @@
+import AppKit
+import CoreGraphics
 import Foundation
+import ImageIO
 import PDFKit
 import SwiftData
 import Testing
@@ -185,7 +188,7 @@ struct BigQTests {
         let marker = folder.appendingPathComponent("contacts-active.json")
         try #require(FileManager.default.isReadableFile(atPath: marker.path))
 
-        let schema = Schema(versionedSchema: StudioSchemaV2.self)
+        let schema = Schema(versionedSchema: StudioSchemaV7.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let summary = try await ShootQImporter(context: container.mainContext) { _, _ in }.run(folder: folder)
@@ -196,6 +199,94 @@ struct BigQTests {
         #expect(summary.schedule == 1096)
         #expect(summary.receipts == 1117)
         #expect(summary.lines > 0)
+        #expect(summary.contracts == 420)
+        let contracts = try container.mainContext.fetch(FetchDescriptor<Contract>())
+        let signed = contracts.filter { $0.status == "signed" }
+        #expect(signed.count == 350)
+        #expect(signed.allSatisfy { contract in
+            contract.signatures.contains { $0.completed && $0.contact != nil }
+        })
+    }
+
+    @Test func agreementHTMLBecomesTheContractText() {
+        let rendered = ContractDocument.rendered("<p><b>ENTIRE AGREEMENT</b></p><p>Hello &amp; welcome</p>")
+        let words = String(rendered.characters)
+        #expect(words.contains("ENTIRE AGREEMENT"))
+        #expect(words.contains("Hello & welcome"))
+    }
+
+    @Test func storedAgreementKeepsItsClauses() throws {
+        let folder = ShootQImportModel.realHome
+            .appendingPathComponent("Xcode/BigQ/shootq-export/contracts.json")
+        let data = try Data(contentsOf: folder)
+        let rows = try JSONDecoder().decode([StoredContract].self, from: data)
+        let angela = try #require(rows.first { $0.id == 543351 })
+        let words = String(ContractDocument.rendered(angela.contents).characters)
+        #expect(words.contains("ENTIRE AGREEMENT"))
+        #expect(words.contains("PAYMENTS"))
+        #expect(words.contains("COPYRIGHTS"))
+    }
+
+    @Test func signedContractShowsOnTheSignerAndTheJobClient() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let bride = Contact(shootqID: "1", fullName: "Ada Bride")
+        let groom = Contact(shootqID: "2", fullName: "Gus Groom")
+        let job = Job(shootqID: "9", name: "Ada Wedding", contact: bride)
+        let contract = Contract(
+            shootqID: "5",
+            title: "Wedding Agreement",
+            status: "signed",
+            html: "<p>Terms</p>",
+            sentAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        contract.job = job
+        let signature = ContractSignature(
+            displayName: "Gus Groom",
+            completed: true,
+            shootqContactID: "2",
+            contact: groom
+        )
+        signature.contract = contract
+        context.insert(bride)
+        context.insert(groom)
+        context.insert(job)
+        context.insert(contract)
+        context.insert(signature)
+        try context.save()
+
+        #expect(ContractLinks.forContact(groom).map(\.shootqID) == ["5"])
+        #expect(ContractLinks.forContact(bride).map(\.shootqID) == ["5"])
+        #expect(ContractLinks.forJob(job).map(\.displayTitle) == ["Wedding Agreement"])
+    }
+
+    @Test func existingBooksAcceptContracts() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bigq-contracts-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let storeURL = folder.appendingPathComponent("BigQ.store")
+
+        do {
+            let schema = Schema(versionedSchema: StudioSchemaV6.self)
+            let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            container.mainContext.insert(Contact(shootqID: "1", fullName: "Ada Bride"))
+            try container.mainContext.save()
+        }
+
+        let schema = Schema(versionedSchema: StudioSchemaV7.self)
+        let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let contacts = try container.mainContext.fetch(FetchDescriptor<Contact>())
+        #expect(contacts.map(\.displayName) == ["Ada Bride"])
+        let contract = Contract(shootqID: "5", title: "Wedding Agreement", status: "signed", html: "<p>Terms</p>")
+        let signature = ContractSignature(displayName: "Ada Bride", completed: true, contact: contacts[0])
+        signature.contract = contract
+        container.mainContext.insert(contract)
+        container.mainContext.insert(signature)
+        try container.mainContext.save()
+        #expect(ContractLinks.forContact(contacts[0]).map(\.displayTitle) == ["Wedding Agreement"])
     }
 
     @Test func deleteGuardNamesTheBalanceAndTheTrail() {
@@ -1215,8 +1306,13 @@ struct BigQTests {
         return defaults
     }
 
+    private struct StoredContract: Decodable {
+        var id: Int
+        var contents: String
+    }
+
     private func makeBooksContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: StudioSchemaV6.self)
+        let schema = Schema(versionedSchema: StudioSchemaV7.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [configuration])
     }
@@ -1256,4 +1352,50 @@ struct PriceExpressionTests {
         #expect(MoneyExpression.appliesWhileTyping("4800") == true)
         #expect(MoneyExpression.appliesWhileTyping("") == true)
     }
+}
+
+@MainActor
+struct StudioLogoProcessorTests {
+    @Test func freshPickIsBoundedBeforeItIsKept() throws {
+        let raw = try sampleJPEG(side: 3200)
+        let bounded = try #require(StudioLogoProcessor.boundedSourceJPEGData(from: raw))
+        let edge = try #require(StudioLogoProcessor.pixelLongEdge(of: bounded))
+        #expect(edge <= StudioLogoProcessor.sourceMaxLongEdgePixels)
+        #expect(edge >= 2000)
+    }
+
+    @Test func cropWritesASquareJPEG() throws {
+        let raw = try sampleJPEG(side: 400)
+        let image = try #require(NSImage(data: raw))
+        let cropped = try #require(
+            StudioLogoProcessor.croppedJPEGData(from: image, offset: .zero, scale: 1, cropSide: 280)
+        )
+        #expect(StudioLogoProcessor.pixelLongEdge(of: cropped) == Int(StudioLogoProcessor.exportSide))
+    }
+
+    private func sampleJPEG(side: Int) throws -> Data {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: side,
+            height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), let image = context.makeImage() else {
+            throw StudioLogoSampleError.unreadable
+        }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else {
+            throw StudioLogoSampleError.unreadable
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { throw StudioLogoSampleError.unreadable }
+        return data as Data
+    }
+}
+
+private enum StudioLogoSampleError: Error {
+    case unreadable
 }

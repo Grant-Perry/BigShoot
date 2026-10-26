@@ -11,11 +11,16 @@ final class Job {
     var jobType: String
     var status: String
     var archived: Bool
+    /// Stable id written into a backup. Empty until the first backup stamps it.
+    var archiveID: String = ""
 
     var contact: Contact?
 
     @Relationship(deleteRule: .nullify, inverse: \Invoice.job)
     var invoices: [Invoice]
+
+    @Relationship(deleteRule: .nullify, inverse: \Contract.job)
+    var contracts: [Contract]
 
     init(
         shootqID: String? = nil,
@@ -34,6 +39,7 @@ final class Job {
         self.archived = archived
         self.contact = contact
         self.invoices = []
+        self.contracts = []
     }
 
     var displayName: String {

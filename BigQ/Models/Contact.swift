@@ -16,12 +16,17 @@ final class Contact {
     var anniversary: Date?
     var archived: Bool
     var createdAt: Date
+    /// Stable id written into a backup. Empty until the first backup stamps it.
+    var archiveID: String = ""
 
     @Relationship(deleteRule: .nullify, inverse: \Job.contact)
     var jobs: [Job]
 
     @Relationship(deleteRule: .nullify, inverse: \Invoice.contact)
     var invoices: [Invoice]
+
+    @Relationship(deleteRule: .nullify, inverse: \ContractSignature.contact)
+    var contractSignatures: [ContractSignature]
 
     init(
         shootqID: String? = nil,
@@ -49,6 +54,7 @@ final class Contact {
         self.createdAt = createdAt
         self.jobs = []
         self.invoices = []
+        self.contractSignatures = []
     }
 
     var displayName: String {

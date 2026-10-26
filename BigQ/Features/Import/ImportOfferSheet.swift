@@ -9,7 +9,7 @@ struct ImportOfferSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("ShootQ books")
                 .font(StudioDesign.displayTitle)
-            Text("Import contacts, jobs, invoices, payments, and line items. Sent mail and contract bodies stay in the folder — they are not loaded into BigQ.")
+            Text("Import contacts, jobs, invoices, payments, line items, and contracts. Sent mail stays in the folder.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -67,6 +67,7 @@ struct ImportOfferSheet: View {
             Text("\(summary.contacts) contacts · \(summary.jobs) jobs · \(summary.invoices) invoices")
             Text("\(summary.schedule) scheduled payments · \(summary.receipts) receipts")
             Text("\(summary.lines) line items · \(summary.catalog) catalog names")
+            Text("\(summary.contracts) contracts")
             if summary.skippedPartialLines > 0 {
                 Text("Skipped \(summary.skippedPartialLines) unfinished line-item rows.")
                     .foregroundStyle(.secondary)

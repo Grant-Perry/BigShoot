@@ -13,6 +13,11 @@ final class StudioBrand {
     var isPrimary: Bool
     var archived: Bool
     var createdAt: Date
+    /// Cropped logo shown on the studio. The source bytes stay so it can be cropped again.
+    @Attribute(.externalStorage) var logoImageData: Data? = nil
+    @Attribute(.externalStorage) var logoImageSourceData: Data? = nil
+    /// Stable id written into a backup. Empty until the first backup stamps it.
+    var archiveID: String = ""
 
     @Relationship(deleteRule: .nullify, inverse: \Invoice.studio)
     var invoices: [Invoice]
@@ -24,7 +29,9 @@ final class StudioBrand {
         address: String = "",
         isPrimary: Bool = false,
         archived: Bool = false,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        logoImageData: Data? = nil,
+        logoImageSourceData: Data? = nil
     ) {
         self.name = name
         self.email = email
@@ -33,6 +40,8 @@ final class StudioBrand {
         self.isPrimary = isPrimary
         self.archived = archived
         self.createdAt = createdAt
+        self.logoImageData = logoImageData
+        self.logoImageSourceData = logoImageSourceData
         self.invoices = []
     }
 

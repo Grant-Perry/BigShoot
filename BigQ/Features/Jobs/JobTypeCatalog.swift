@@ -7,7 +7,7 @@ final class JobTypeCatalog {
     static let weddings = "Weddings"
     static let builtIn = [commercial, weddings]
 
-    private static let storageKey = "BigQ.jobTypes"
+    static let storageKey = "BigQ.jobTypes"
     private let defaults: UserDefaults
     private(set) var names: [String]
 

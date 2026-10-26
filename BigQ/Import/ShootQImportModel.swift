@@ -89,7 +89,7 @@ final class ShootQImportModel {
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
         panel.prompt = "Import"
-        panel.message = "Choose the shootq-export folder. Sent mail and contracts stay on disk."
+        panel.message = "Choose the shootq-export folder. Sent mail stays on disk."
         if let discoveredFolder {
             panel.directoryURL = discoveredFolder
         }
