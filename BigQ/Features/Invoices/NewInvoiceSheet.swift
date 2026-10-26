@@ -32,10 +32,13 @@ struct NewInvoiceSheet: View {
     var body: some View {
         @Bindable var draft = draft
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Text(editorTitle)
                     .font(StudioDesign.displayTitle)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let submitted = draft.submittedAt {
+                    SubmittedDatePill(date: submitted)
+                }
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -386,6 +389,21 @@ private enum JobBypass {
 private struct JobEditorLaunch: Identifiable {
     let id = UUID()
     var job: Job?
+}
+
+private struct SubmittedDatePill: View {
+    var date: Date
+
+    var body: some View {
+        Text("Submitted: \(StudioStamp.string(date))")
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.gpGreen.opacity(0.18), in: Capsule())
+            .foregroundStyle(Color.gpGreen)
+            .accessibilityLabel("Submitted \(StudioStamp.string(date))")
+    }
 }
 
 private struct NetDaysField: View {
