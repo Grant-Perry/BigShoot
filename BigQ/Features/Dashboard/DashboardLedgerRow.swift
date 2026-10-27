@@ -130,8 +130,10 @@ struct DashboardLedgerRow: View {
         }
     }
 
-    /// Submitted invoices wear green on the rail. The amount keeps its status color.
+    /// Past due wears the overdue color on the rail, even when the invoice was submitted.
+    /// Otherwise submitted invoices wear green. The amount keeps its status color.
     private var railColor: Color {
+        if invoice.displayStatus == .overdue { return StudioDesign.rose }
         if invoice.submittedAt != nil { return .gpGreen }
         return amountColor
     }

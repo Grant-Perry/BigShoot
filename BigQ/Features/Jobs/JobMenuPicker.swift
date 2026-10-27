@@ -6,7 +6,7 @@ struct JobMenuPicker: View {
     let jobs: [Job]
     let selection: Job?
     var openBalance: [PersistentIdentifier: String] = [:]
-    /// When a client already has an open invoice, existing jobs lead and the escapes sit at the bottom.
+    /// When a client already has an open invoice, existing jobs lead and "No job" sits at the bottom.
     var placeEscapesLast: Bool = false
     var onAdd: () -> Void
     var onSelect: (Job?) -> Void
@@ -121,16 +121,15 @@ private struct JobMenuList: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 1) {
+                addJobRow
+                Divider()
+                    .padding(.vertical, 4)
                 if placeEscapesLast {
                     jobRows
                     Divider()
                         .padding(.vertical, 4)
-                    addJobRow
                     noJobRow
                 } else {
-                    addJobRow
-                    Divider()
-                        .padding(.vertical, 4)
                     noJobRow
                     jobRows
                 }

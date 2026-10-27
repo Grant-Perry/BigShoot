@@ -7,8 +7,12 @@ struct DashboardHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(StudioDesign.displayHero)
+            if title.compare(StudioBanner.fallback, options: .caseInsensitive) == .orderedSame {
+                BigQWordmark()
+            } else {
+                Text(title)
+                    .font(StudioDesign.displayHero)
+            }
             Text(subtitle)
                 .font(.title3)
                 .foregroundStyle(.secondary)

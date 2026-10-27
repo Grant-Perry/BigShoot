@@ -313,24 +313,13 @@ struct NewInvoiceSheet: View {
     }
 
     private func presentJobEditor(_ job: Job?) {
-        if job == nil, contactHasOpenInvoice {
-            bypassPrompt = .newJob
-            return
-        }
+        bypassPrompt = nil
         showJobEditor(job)
     }
 
     private func confirmBypass() {
-        let prompt = bypassPrompt
         bypassPrompt = nil
-        switch prompt {
-        case .newJob:
-            showJobEditor(nil)
-        case .noJob:
-            draft.job = nil
-        case nil:
-            break
-        }
+        draft.job = nil
     }
 
     private func allowAdditionalWork() {
@@ -375,14 +364,10 @@ struct NewInvoiceSheet: View {
 }
 
 private enum JobBypass {
-    case newJob
     case noJob
 
     var continueTitle: String {
-        switch self {
-        case .newJob: "Add a job anyway"
-        case .noJob: "Continue without a job"
-        }
+        "Continue without a job"
     }
 }
 

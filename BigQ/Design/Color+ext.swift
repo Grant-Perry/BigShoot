@@ -59,7 +59,8 @@ extension Color {
 
 
    static let gpPastelMint               = Color(#colorLiteral(red: 0.816, green: 1, blue: 0.647, alpha: 1))
-   static let gpGreen                    = Color(#colorLiteral(red: 0.6198272109, green: 0.6509014368, blue: 0.4784618616, alpha: 1))
+   static let gpGreen                    = Color(#colorLiteral(red: 0.4666666687, green: 0.7647058964, blue: 0.2666666806, alpha: 1))
+   static let gpGreen2                    = Color(#colorLiteral(red: 0.6198272109, green: 0.6509014368, blue: 0.4784618616, alpha: 1))
    static let gpMinty                    = Color(#colorLiteral(red: 0.5960784314, green: 1, blue: 0.5960784314, alpha: 1))
    static let gpFlatGreen                = Color(#colorLiteral(red: 0.03852885208, green: 0.6235294342, blue: 0.3622174664, alpha: 1))
 	  /// Soft teal for selected-plan glow — complements warm gold, reads well on dark
