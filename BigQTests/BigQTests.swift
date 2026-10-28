@@ -370,6 +370,116 @@ struct BigQTests {
         #expect(remaining.isEmpty)
     }
 
+    @Test func removingAFullPaymentReopensTheInvoice() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let amount = Decimal(string: "10039.77")!
+        let paidAt = Date(timeIntervalSince1970: 1_761_609_600)
+        let invoice = Invoice(
+            shootqID: "1223441",
+            number: "1223441",
+            dueDate: Date(timeIntervalSince1970: 0),
+            paidDate: paidAt,
+            status: .paid,
+            total: amount,
+            amountPaid: amount,
+            balance: 0,
+            billToName: "Snow Companies"
+        )
+        let receipt = PaymentReceipt(paidAt: paidAt, amount: amount)
+        receipt.methodRaw = "Wire Transfer"
+        receipt.invoice = invoice
+        context.insert(invoice)
+        context.insert(receipt)
+        BooksTrail.notePayment(invoice, amount: amount, methodName: "Wire Transfer", in: context)
+
+        let message = PaymentRemoval.message(for: receipt)
+        #expect(message.contains("Wire Transfer"))
+        #expect(message.contains(StudioMoney.string(amount)))
+        #expect(message.contains("Snow Companies"))
+        #expect(PaymentRemoval.canRemove(receipt))
+
+        try PaymentRemoval.remove(receipt, in: context)
+
+        #expect(invoice.amountPaid == 0)
+        #expect(invoice.balance == amount)
+        #expect(invoice.status == .overdue)
+        #expect(invoice.paidDate == nil)
+        #expect(invoice.receipts.isEmpty)
+        #expect(invoice.canEditLines)
+        #expect(invoice.canRecordPayment)
+        let events = try context.fetch(FetchDescriptor<BooksEvent>())
+        #expect(events.contains { $0.kind == .paymentApplied })
+        let removed = try #require(events.first { $0.kind == .paymentRemoved })
+        #expect(removed.amount == amount)
+        #expect(removed.invoiceNumber == "1223441")
+        #expect(removed.detail.contains("Wire Transfer"))
+        let stored = try context.fetch(FetchDescriptor<PaymentReceipt>())
+        #expect(stored.isEmpty)
+    }
+
+    @Test func removingOnePaymentLeavesTheRest() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = Date(timeIntervalSince1970: 1_761_609_600)
+        let invoice = Invoice(
+            shootqID: "9",
+            number: "9",
+            dueDate: Date(timeIntervalSinceNow: 60 * 60 * 24 * 30),
+            paidDate: later,
+            status: .paid,
+            total: 100,
+            amountPaid: 100,
+            balance: 0,
+            billToName: "Ada"
+        )
+        let first = PaymentReceipt(paidAt: earlier, amount: 40, method: .check)
+        let second = PaymentReceipt(paidAt: later, amount: 60, method: .card)
+        first.invoice = invoice
+        second.invoice = invoice
+        context.insert(invoice)
+        context.insert(first)
+        context.insert(second)
+
+        try PaymentRemoval.remove(second, in: context)
+
+        #expect(invoice.amountPaid == 40)
+        #expect(invoice.balance == 60)
+        #expect(invoice.status == .pending)
+        #expect(invoice.paidDate == nil)
+        #expect(invoice.receipts.map(\.amount) == [40])
+    }
+
+    @Test func importedPaymentsStayOnTheInvoice() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let invoice = Invoice(
+            shootqID: "4",
+            number: "4",
+            status: .paid,
+            total: 80,
+            amountPaid: 80,
+            balance: 0,
+            billToName: "Imported"
+        )
+        let receipt = PaymentReceipt(shootqID: "p1", amount: 80, method: .check)
+        receipt.invoice = invoice
+        context.insert(invoice)
+        context.insert(receipt)
+        try context.save()
+
+        #expect(!PaymentRemoval.canRemove(receipt))
+        #expect(throws: PaymentRemoval.Failure.imported) {
+            try PaymentRemoval.remove(receipt, in: context)
+        }
+        #expect(invoice.amountPaid == 80)
+        #expect(invoice.balance == 0)
+        #expect(invoice.receipts.count == 1)
+        let events = try context.fetch(FetchDescriptor<BooksEvent>())
+        #expect(events.isEmpty)
+    }
+
     @Test func netDaysCountsFromTheShootAndDefaultsTo45() {
         let calendar = Calendar.current
         let shoot = calendar.date(from: DateComponents(year: 2026, month: 10, day: 20))!

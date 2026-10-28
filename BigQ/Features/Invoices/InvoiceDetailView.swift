@@ -10,7 +10,10 @@ struct InvoiceDetailView: View {
     var onMarkSent: () -> Void
     var onDelete: () -> Void
 
+    @Environment(\.modelContext) private var modelContext
     @State private var numberHeight: CGFloat = 48
+    @State private var receiptPendingRemoval: PersistentIdentifier?
+    @State private var booksError: String?
     @Query(sort: \BooksEvent.occurredAt, order: .reverse) private var booksEvents: [BooksEvent]
 
     private var trail: [BooksEvent] {
@@ -55,6 +58,21 @@ struct InvoiceDetailView: View {
                 onMarkSent: onMarkSent,
                 onDelete: onDelete
             )
+        }
+        .alert(
+            PaymentRemoval.title,
+            isPresented: removalPresented,
+            presenting: receiptPendingRemoval
+        ) { id in
+            Button("Remove Payment", role: .destructive) { confirmRemoval(id) }
+            Button("Cancel", role: .cancel) {}
+        } message: { id in
+            Text(removalMessage(for: id))
+        }
+        .alert("Couldn’t update the books", isPresented: booksErrorPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(booksError ?? "")
         }
         .toolbar {
             if invoice.status == .draft {
@@ -243,11 +261,60 @@ struct InvoiceDetailView: View {
                     Spacer()
                     Text(StudioMoney.string(receipt.amount))
                         .monospacedDigit()
+                    if canRemoveAnyPayment {
+                        removalControl(receipt)
+                    }
                 }
             }
         }
         .padding(StudioDesign.Spacing.card)
         .paperCard()
+    }
+
+    private var canRemoveAnyPayment: Bool {
+        invoice.receipts.contains(where: PaymentRemoval.canRemove)
+    }
+
+    private var removalPresented: Binding<Bool> {
+        Binding(get: { receiptPendingRemoval != nil }, set: { if !$0 { receiptPendingRemoval = nil } })
+    }
+
+    private var booksErrorPresented: Binding<Bool> {
+        Binding(get: { booksError != nil }, set: { if !$0 { booksError = nil } })
+    }
+
+    @ViewBuilder
+    private func removalControl(_ receipt: PaymentReceipt) -> some View {
+        if PaymentRemoval.canRemove(receipt) {
+            Button("Remove", role: .destructive) {
+                receiptPendingRemoval = receipt.persistentModelID
+            }
+            .buttonStyle(.borderless)
+            .font(.callout)
+            .accessibilityLabel("Remove \(StudioMoney.string(receipt.amount)) \(receipt.methodTitle)")
+            .accessibilityHint("Takes this payment off the invoice and puts the balance back on the books.")
+            .frame(width: 72, alignment: .trailing)
+        } else {
+            Color.clear
+                .frame(width: 72)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func removalMessage(for id: PersistentIdentifier) -> String {
+        guard let receipt = invoice.receipts.first(where: { $0.persistentModelID == id }) else {
+            return "This payment is no longer on the invoice."
+        }
+        return PaymentRemoval.message(for: receipt)
+    }
+
+    private func confirmRemoval(_ id: PersistentIdentifier) {
+        guard let receipt = invoice.receipts.first(where: { $0.persistentModelID == id }) else { return }
+        do {
+            try PaymentRemoval.remove(receipt, in: modelContext)
+        } catch {
+            booksError = error.localizedDescription
+        }
     }
 
     private func labeled(_ title: String, _ value: String) -> some View {

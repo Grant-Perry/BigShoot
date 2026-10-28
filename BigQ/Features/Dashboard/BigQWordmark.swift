@@ -5,13 +5,14 @@ struct BigQWordmark: View {
     /// Bowl bottom as a fraction of the asset. The tail hangs past this line.
     private static let bowlBaseline: CGFloat = 826.0 / 876.0
     /// A step above the cap height of `StudioDesign.displayHero` (40pt regular).
-    private static let height: CGFloat = 42
+    private static let height: CGFloat = 46
     private static let aspect: CGFloat = 810.0 / 876.0
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: -5) {
             Text("Big")
                 .font(StudioDesign.displayHero)
+                .shadow(color: .black.opacity(0.7), radius: 4, y: 2)
                 .zIndex(1)
             Image("WordmarkQ")
                 .resizable()

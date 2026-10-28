@@ -58,6 +58,22 @@ enum BooksTrail {
         )
     }
 
+    static func notePaymentRemoved(
+        _ invoice: Invoice,
+        amount: Decimal,
+        methodName: String,
+        paidAt: Date,
+        in context: ModelContext
+    ) {
+        write(
+            .paymentRemoved,
+            invoice: invoice,
+            amount: amount,
+            detail: "Removed \(StudioMoney.string(amount)) by \(methodName), paid \(StudioDay.string(paidAt)), from \(invoice.displayNumber).",
+            in: context
+        )
+    }
+
     static func noteDeleted(_ invoice: Invoice, in context: ModelContext) {
         let paid = invoice.amountPaid
         var detail = "Deleted \(invoice.displayNumber) for \(invoice.clientName). Balance was \(StudioMoney.string(invoice.balance))."
