@@ -39,6 +39,8 @@ final class Invoice {
     var job: Job?
     /// Studio that issued this invoice. New invoices take the primary studio and keep it.
     var studio: StudioBrand?
+    /// Quote that produced this invoice, when conversion ran in BigQ.
+    var sourceQuote: Quote?
 
     @Relationship(deleteRule: .cascade, inverse: \InvoiceLine.invoice)
     var lines: [InvoiceLine]

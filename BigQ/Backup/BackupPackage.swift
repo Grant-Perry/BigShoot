@@ -74,6 +74,12 @@ enum BackupPackage {
             guard fileManager.fileExists(atPath: body.path) else { continue }
             bodies[hash] = try Data(contentsOf: body)
         }
+        for quote in file.quotes {
+            guard let hash = quote.agreementBodyFile, bodies[hash] == nil else { continue }
+            let body = root.appendingPathComponent(bodiesFolder).appendingPathComponent("\(hash).html")
+            guard fileManager.fileExists(atPath: body.path) else { continue }
+            bodies[hash] = try Data(contentsOf: body)
+        }
         var media: [String: Data] = [:]
         for studio in file.studios {
             for hash in [studio.logoFile, studio.logoSourceFile].compactMap({ $0 }) where media[hash] == nil {
@@ -81,6 +87,12 @@ enum BackupPackage {
                 guard fileManager.fileExists(atPath: image.path) else { continue }
                 media[hash] = try Data(contentsOf: image)
             }
+        }
+        for quote in file.quotes {
+            guard let hash = quote.evidenceFile, media[hash] == nil else { continue }
+            let file = root.appendingPathComponent(mediaFolder).appendingPathComponent(hash)
+            guard fileManager.fileExists(atPath: file.path) else { continue }
+            media[hash] = try Data(contentsOf: file)
         }
         return BackupPayload(file: file, bodies: bodies, media: media)
     }

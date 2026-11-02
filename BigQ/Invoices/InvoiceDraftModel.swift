@@ -111,12 +111,12 @@ final class InvoiceDraftModel {
         invoiceDate = invoice.invoiceDate
         dueDate = invoice.dueDate ?? invoiceDate
         syncNetDaysFromDueDate()
-        storedTax = invoice.tax
-        taxRate = invoice.taxRate ?? 0
-        taxScheduleName = invoice.taxScheduleName ?? ""
-        calculatesTax = taxRate > 0
-        invoiceTaxable = invoice.appliesTax
-        taxRateText = calculatesTax ? TaxRateInput.percentText(for: taxRate) : ""
+        applyTaxFields(
+            tax: invoice.tax,
+            taxRate: invoice.taxRate ?? 0,
+            taxScheduleName: invoice.taxScheduleName ?? "",
+            invoiceTaxable: invoice.appliesTax
+        )
         discount = invoice.discount
         shipping = invoice.shipping
         note = invoice.note
@@ -138,6 +138,21 @@ final class InvoiceDraftModel {
             )
         }
         fillEmptyNoteFromJob()
+    }
+
+    /// Pricing fields only — used when a quote draft mirrors into this editor.
+    func applyTaxFields(
+        tax: Decimal,
+        taxRate: Decimal,
+        taxScheduleName: String,
+        invoiceTaxable: Bool
+    ) {
+        storedTax = tax
+        self.taxRate = taxRate
+        self.taxScheduleName = taxScheduleName
+        calculatesTax = taxRate > 0
+        self.invoiceTaxable = invoiceTaxable
+        taxRateText = calculatesTax ? TaxRateInput.percentText(for: taxRate) : ""
     }
 
     /// A blank note prints the job name. A note the user has typed is left alone.
@@ -178,7 +193,7 @@ final class InvoiceDraftModel {
 
     /// A throwaway invoice in its own store, so preview never writes the books.
     func makePreview(studio: StudioBrand?) throws -> InvoicePreviewSession {
-        let schema = Schema(versionedSchema: StudioSchemaV9.self)
+        let schema = Schema(versionedSchema: StudioSchemaV10.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = ModelContext(container)

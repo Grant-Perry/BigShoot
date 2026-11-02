@@ -25,6 +25,8 @@ struct SettingsWorkspace: View {
             switch category {
             case .studios, nil:
                 StudioBrandWorkspace(selection: $studioID)
+            case .agreements:
+                ContractTemplateSettingsView()
             case .banner:
                 BannerSettingsView()
             case .backup:

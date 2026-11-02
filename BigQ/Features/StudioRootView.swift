@@ -7,7 +7,9 @@ struct StudioRootView: View {
     @State private var contactID: PersistentIdentifier?
     @State private var jobID: PersistentIdentifier?
     @State private var invoiceID: PersistentIdentifier?
+    @State private var quoteID: PersistentIdentifier?
     @State private var showNewInvoice = false
+    @State private var showNewQuote = false
     @State private var exportError: String?
     @State private var importModel = ShootQImportModel()
     @Query(sort: \StudioBrand.name) private var studios: [StudioBrand]
@@ -35,6 +37,9 @@ struct StudioRootView: View {
         .sheet(isPresented: $showNewInvoice) {
             NewInvoiceSheet(onOpenInvoice: openInvoice)
         }
+        .sheet(isPresented: $showNewQuote) {
+            NewQuoteSheet()
+        }
         .sheet(isPresented: $importModel.isPresentingOffer) {
             ImportOfferSheet(model: importModel)
         }
@@ -55,6 +60,9 @@ struct StudioRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .bigShootNewInvoice)) { _ in
             showNewInvoice = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .bigQNewQuote)) { _ in
+            showNewQuote = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .bigShootImport)) { _ in
             importModel.presentForImport()
@@ -112,7 +120,13 @@ struct StudioRootView: View {
         case .contacts:
             ContactWorkspace(selection: $contactID, onOpenJob: openJob, onOpenInvoice: openInvoice)
         case .jobs:
-            JobWorkspace(selection: $jobID, onOpenInvoice: openInvoice)
+            JobWorkspace(selection: $jobID, onOpenInvoice: openInvoice, onOpenQuote: openQuote)
+        case .quotes:
+            QuoteWorkspace(
+                selection: $quoteID,
+                showNewQuote: $showNewQuote,
+                onOpenInvoice: openInvoice
+            )
         case .invoices:
             InvoiceWorkspace(
                 selection: $invoiceID,
@@ -124,6 +138,11 @@ struct StudioRootView: View {
         case .settings:
             SettingsWorkspace()
         }
+    }
+
+    private func openQuote(_ id: PersistentIdentifier) {
+        quoteID = id
+        section = .quotes
     }
 
     private func openInvoice(_ id: PersistentIdentifier) {

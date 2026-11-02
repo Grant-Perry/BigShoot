@@ -22,6 +22,10 @@ struct BigQApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {
                 NewInvoiceCommand()
+                Button("New Quote") {
+                    NotificationCenter.default.post(name: .bigQNewQuote, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button("Import ShootQ…") {
                     NotificationCenter.default.post(name: .bigShootImport, object: nil)
                 }

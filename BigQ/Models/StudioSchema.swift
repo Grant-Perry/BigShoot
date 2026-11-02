@@ -108,6 +108,17 @@ enum StudioSchemaV9: VersionedSchema {
     }
 }
 
+/// Quotes, quote lines, contract templates, and invoice←quote linkage.
+enum StudioSchemaV10: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(10, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV9.models + [Quote.self, QuoteLine.self]
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

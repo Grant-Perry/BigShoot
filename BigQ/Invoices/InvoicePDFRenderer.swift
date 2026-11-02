@@ -12,28 +12,64 @@ enum InvoicePDFRenderer {
     private static let hairline = NSColor(calibratedWhite: 0.76, alpha: 1)
 
     static func render(_ invoice: Invoice) -> Data {
+        render(invoice, documentTitle: "Invoice", dateLabel: "Invoice date", dueLabel: "Due")
+    }
+
+    static func render(
+        _ invoice: Invoice,
+        documentTitle: String,
+        dateLabel: String,
+        dueLabel: String
+    ) -> Data {
         let data = NSMutableData()
         guard let consumer = CGDataConsumer(data: data as CFMutableData) else { return Data() }
         var media = CGRect(origin: .zero, size: pageSize)
         guard let context = CGContext(consumer: consumer, mediaBox: &media, nil) else { return Data() }
         context.beginPDFPage(nil)
-        draw(invoice, in: context, media: media)
+        draw(
+            invoice,
+            documentTitle: documentTitle,
+            dateLabel: dateLabel,
+            dueLabel: dueLabel,
+            in: context,
+            media: media
+        )
         context.endPDFPage()
         context.closePDF()
         return data as Data
     }
 
-    private static func draw(_ invoice: Invoice, in context: CGContext, media: CGRect) {
+    private static func draw(
+        _ invoice: Invoice,
+        documentTitle: String,
+        dateLabel: String,
+        dueLabel: String,
+        in context: CGContext,
+        media: CGRect
+    ) {
         let contentWidth = media.width - margin * 2
         let right = media.width - margin
         let labels = LabelColumn(right: right)
-        var y = drawMasthead(invoice, contentWidth: contentWidth, right: right, context: context)
+        var y = drawMasthead(
+            invoice,
+            documentTitle: documentTitle,
+            contentWidth: contentWidth,
+            right: right,
+            context: context
+        )
 
         y += 16
         rule(x: margin, y: y, width: contentWidth, weight: 0.6, color: gold, context: context)
         y += 22
 
-        y = drawParties(invoice, top: y, labels: labels, context: context)
+        y = drawParties(
+            invoice,
+            dateLabel: dateLabel,
+            dueLabel: dueLabel,
+            top: y,
+            labels: labels,
+            context: context
+        )
         y += 22
         y = drawTable(invoice, top: y, right: right, labels: labels, context: context)
         drawFooter(invoice, context: context)
@@ -66,6 +102,7 @@ enum InvoicePDFRenderer {
 
     private static func drawMasthead(
         _ invoice: Invoice,
+        documentTitle: String,
         contentWidth: CGFloat,
         right: CGFloat,
         context: CGContext
@@ -87,7 +124,7 @@ enum InvoicePDFRenderer {
 
         paint(studioName, x: margin, top: nameTop, width: nameWidth, font: nameFont, color: ink, context: context)
         paint(
-            "Invoice",
+            documentTitle,
             x: right - numberColumn,
             top: kickerTop,
             width: numberColumn,
@@ -130,15 +167,22 @@ enum InvoicePDFRenderer {
         return y
     }
 
-    private static func drawParties(_ invoice: Invoice, top: CGFloat, labels: LabelColumn, context: CGContext) -> CGFloat {
+    private static func drawParties(
+        _ invoice: Invoice,
+        dateLabel: String,
+        dueLabel: String,
+        top: CGFloat,
+        labels: LabelColumn,
+        context: CGContext
+    ) -> CGFloat {
         let labelFont = fieldLabel
         let labelBox = lineBox(labelFont)
         var y = top
         paint("Bill to:", x: margin, top: y, width: 240, font: labelFont, color: mute, context: context)
 
         var metaY = top
-        labeled("Invoice date", StudioDay.string(invoice.invoiceDate), column: labels, y: &metaY, valueFont: figures(11, weight: .medium), context: context)
-        labeled("Due", StudioDay.string(invoice.dueDate), column: labels, y: &metaY, valueFont: figures(11, weight: .medium), context: context)
+        labeled(dateLabel, StudioDay.string(invoice.invoiceDate), column: labels, y: &metaY, valueFont: figures(11, weight: .medium), context: context)
+        labeled(dueLabel, StudioDay.string(invoice.dueDate), column: labels, y: &metaY, valueFont: figures(11, weight: .medium), context: context)
         if let paid = invoice.paidDate {
             labeled("Paid", StudioDay.string(paid), column: labels, y: &metaY, valueFont: figures(11, weight: .medium), context: context)
         }

@@ -7,12 +7,12 @@ enum ContractLinks {
     static func forContact(_ contact: Contact) -> [Contract] {
         var byID: [PersistentIdentifier: Contract] = [:]
         for signature in contact.contractSignatures {
-            if let contract = signature.contract {
+            if let contract = signature.contract, !contract.isTemplate {
                 byID[contract.persistentModelID] = contract
             }
         }
         for job in contact.jobs {
-            for contract in job.contracts {
+            for contract in job.contracts where !contract.isTemplate {
                 byID[contract.persistentModelID] = contract
             }
         }
@@ -20,7 +20,7 @@ enum ContractLinks {
     }
 
     static func forJob(_ job: Job) -> [Contract] {
-        job.contracts.sorted(by: newerFirst)
+        job.contracts.filter { !$0.isTemplate }.sorted(by: newerFirst)
     }
 
     private static func newerFirst(_ lhs: Contract, _ rhs: Contract) -> Bool {

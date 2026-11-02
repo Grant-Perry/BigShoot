@@ -12,6 +12,8 @@ final class Contract {
     var html: String
     var eventLabel: String
     var sentAt: Date?
+    /// Reusable agreement body for new quotes. Imported ShootQ rows stay false.
+    var isTemplate: Bool = false
     /// Stable id written into a backup. Empty until the first backup stamps it.
     var archiveID: String = ""
 
@@ -27,6 +29,7 @@ final class Contract {
         html: String = "",
         eventLabel: String = "",
         sentAt: Date? = nil,
+        isTemplate: Bool = false,
         job: Job? = nil
     ) {
         self.shootqID = shootqID
@@ -35,6 +38,7 @@ final class Contract {
         self.html = html
         self.eventLabel = eventLabel
         self.sentAt = sentAt
+        self.isTemplate = isTemplate
         self.job = job
         self.signatures = []
     }

@@ -4,6 +4,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
     case dashboard
     case contacts
     case jobs
+    case quotes
     case invoices
     case catalog
     case settings
@@ -11,7 +12,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     static var books: [StudioSection] {
-        [.dashboard, .contacts, .jobs, .invoices, .catalog]
+        [.dashboard, .contacts, .jobs, .quotes, .invoices, .catalog]
     }
 
     var title: String {
@@ -19,6 +20,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
         case .dashboard: "Dashboard"
         case .contacts: "Contacts"
         case .jobs: "Jobs"
+        case .quotes: "Quotes"
         case .invoices: "Invoices"
         case .catalog: "Catalog"
         case .settings: "Settings"
@@ -30,6 +32,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
         case .dashboard: "square.grid.2x2"
         case .contacts: "person.2"
         case .jobs: "camera"
+        case .quotes: "doc.plaintext"
         case .invoices: "doc.text"
         case .catalog: "list.bullet.rectangle"
         case .settings: "gearshape"
@@ -39,6 +42,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
 
 extension Notification.Name {
     static let bigShootNewInvoice = Notification.Name("BigQ.NewInvoice")
+    static let bigQNewQuote = Notification.Name("BigQ.NewQuote")
     static let bigShootImport = Notification.Name("BigQ.Import")
     static let bigShootExport = Notification.Name("BigQ.Export")
     static let bigQAddCatalogItem = Notification.Name("BigQ.AddCatalogItem")

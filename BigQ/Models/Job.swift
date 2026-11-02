@@ -19,6 +19,9 @@ final class Job {
     @Relationship(deleteRule: .nullify, inverse: \Invoice.job)
     var invoices: [Invoice]
 
+    @Relationship(deleteRule: .nullify, inverse: \Quote.job)
+    var quotes: [Quote]
+
     @Relationship(deleteRule: .nullify, inverse: \Contract.job)
     var contracts: [Contract]
 
@@ -39,6 +42,7 @@ final class Job {
         self.archived = archived
         self.contact = contact
         self.invoices = []
+        self.quotes = []
         self.contracts = []
     }
 

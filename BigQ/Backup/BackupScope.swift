@@ -18,8 +18,8 @@ enum BackupScope: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .full: "Studios, clients, jobs, invoices, payments, contracts, the price list, and preferences."
-        case .books: "Clients, jobs, invoices, payments, studios, and contracts."
+        case .full: "Studios, clients, jobs, quotes, invoices, payments, contracts, the price list, and preferences."
+        case .books: "Clients, jobs, quotes, invoices, payments, studios, and contracts."
         case .catalog: "The price list and tax schedules."
         }
     }

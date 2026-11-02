@@ -31,6 +31,16 @@ enum BackupRestore {
                 studios: studios.index,
                 context: context
             )
+            let quotes = try upsertQuotes(
+                payload.file.quotes,
+                contacts: contacts,
+                jobs: jobs,
+                studios: studios.index,
+                invoices: invoices,
+                bodies: payload.bodies,
+                media: payload.media,
+                context: context
+            )
             let contracts = try upsertContracts(
                 payload.file.contracts,
                 jobs: jobs,
@@ -41,6 +51,7 @@ enum BackupRestore {
             stripChildren(invoices: invoices, contracts: contracts, context: context)
             try context.save()
             try addInvoiceChildren(invoices, catalog: catalog, context: context)
+            try addQuoteChildren(quotes, catalog: catalog, context: context)
             addSignatures(contracts, contacts: contacts, context: context)
             if !studios.primary.isEmpty {
                 try enforcePrimary(studios.primary, context: context)
@@ -71,6 +82,7 @@ enum BackupRestore {
         if scope.includesBooks {
             try wipe(BooksEvent.self, context)
             try wipe(Contract.self, context)
+            try wipe(Quote.self, context)
             try wipe(Invoice.self, context)
             try wipe(Job.self, context)
             try wipe(Contact.self, context)
@@ -479,6 +491,7 @@ enum BackupRestore {
             contract.status = record.status
             contract.eventLabel = record.eventLabel
             contract.sentAt = record.sentAt
+            contract.isTemplate = record.isTemplate ?? false
             contract.job = record.jobID.flatMap { jobs.existing(archiveID: $0, shootqID: nil) }
             if let hash = record.bodyFile, let data = bodies[hash] {
                 contract.html = String(decoding: data, as: UTF8.self)
@@ -552,9 +565,90 @@ enum BackupRestore {
         var record: BackupFile.Invoice
     }
 
+    private struct PendingQuote {
+        var quote: Quote
+        var record: BackupFile.Quote
+    }
+
     private struct PendingContract {
         var contract: Contract
         var record: BackupFile.Contract
+    }
+
+    private static func upsertQuotes(
+        _ records: [BackupFile.Quote],
+        contacts: BackupIndex<Contact>,
+        jobs: BackupIndex<Job>,
+        studios: BackupIndex<StudioBrand>,
+        invoices: [PendingInvoice],
+        bodies: [String: Data],
+        media: [String: Data],
+        context: ModelContext
+    ) throws -> [PendingQuote] {
+        let invoiceByArchive = Dictionary(uniqueKeysWithValues: invoices.map {
+            ($0.invoice.archiveID, $0.invoice)
+        })
+        let locals = try context.fetch(FetchDescriptor<Quote>())
+        var index = BackupIndex<Quote>()
+        for quote in locals {
+            index.register(archiveID: quote.archiveID, shootqID: nil, model: quote)
+        }
+        var pending: [PendingQuote] = []
+        for record in records {
+            let quote: Quote
+            let existed: Bool
+            if let found = index.existing(archiveID: record.archiveID, shootqID: nil) {
+                quote = found
+                existed = true
+            } else {
+                quote = Quote()
+                quote.archiveID = BackupIdentity.stored(record.archiveID)
+                context.insert(quote)
+                existed = false
+            }
+            index.markUsed(quote)
+            quote.number = record.number
+            quote.quoteDate = record.quoteDate
+            quote.validUntil = record.validUntil
+            quote.statusRaw = record.status
+            quote.tax = try BackupMoney.decimal(record.tax)
+            quote.taxRate = try BackupMoney.optional(record.taxRate)
+            quote.taxScheduleName = record.taxScheduleName
+            quote.invoiceTaxable = record.invoiceTaxable
+            quote.discount = try BackupMoney.decimal(record.discount)
+            quote.shipping = try BackupMoney.decimal(record.shipping)
+            quote.total = try BackupMoney.decimal(record.total)
+            quote.billToName = record.billToName
+            quote.note = record.note
+            quote.closing = record.closing
+            quote.agreementTitle = record.agreementTitle
+            quote.sentAt = record.sentAt
+            quote.signedAt = record.signedAt
+            quote.contact = record.contactID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
+            quote.job = record.jobID.flatMap { jobs.existing(archiveID: $0, shootqID: nil) }
+            quote.studio = record.studioID.flatMap { studios.existing(archiveID: $0, shootqID: nil) }
+            if let invoiceID = record.invoiceID {
+                quote.convertedInvoice = invoiceByArchive[invoiceID]
+            }
+            if let hash = record.agreementBodyFile, let data = bodies[hash] {
+                quote.agreementHTML = String(decoding: data, as: UTF8.self)
+            } else if !existed {
+                quote.agreementHTML = ""
+            }
+            if let hash = record.evidenceFile {
+                quote.signedEvidenceData = media[hash]
+            }
+            adopt(
+                fileArchiveID: record.archiveID,
+                fileShootQID: nil,
+                localArchiveID: &quote.archiveID,
+                localShootQID: nil,
+                model: quote,
+                index: &index
+            )
+            pending.append(PendingQuote(quote: quote, record: record))
+        }
+        return pending
     }
 
     private static func stripChildren(
@@ -569,6 +663,32 @@ enum BackupRestore {
         }
         for item in contracts {
             Array(item.contract.signatures).forEach(context.delete)
+        }
+    }
+
+    private static func addQuoteChildren(
+        _ pending: [PendingQuote],
+        catalog: BackupIndex<CatalogItem>,
+        context: ModelContext
+    ) throws {
+        for item in pending {
+            Array(item.quote.lines).forEach(context.delete)
+            for record in item.record.lines {
+                let line = QuoteLine(
+                    name: record.name,
+                    detail: record.detail,
+                    quantity: try BackupMoney.decimal(record.quantity),
+                    unitPrice: try BackupMoney.decimal(record.unitPrice),
+                    position: record.position,
+                    taxable: record.taxable ?? false
+                )
+                line.taxable = record.taxable
+                line.quote = item.quote
+                if let catalogID = record.catalogID {
+                    line.catalogItem = catalog.existing(archiveID: catalogID, shootqID: nil)
+                }
+                context.insert(line)
+            }
         }
     }
 

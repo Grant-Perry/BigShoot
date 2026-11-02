@@ -23,6 +23,7 @@ enum BackupExport {
             catalog: try context.fetchCount(FetchDescriptor<CatalogItem>()),
             taxSchedules: try context.fetchCount(FetchDescriptor<TaxSchedule>()),
             invoices: try context.fetchCount(FetchDescriptor<Invoice>()),
+            quotes: try context.fetchCount(FetchDescriptor<Quote>()),
             contracts: try context.fetchCount(FetchDescriptor<Contract>()),
             events: try context.fetchCount(FetchDescriptor<BooksEvent>())
         )
@@ -40,6 +41,7 @@ enum BackupExport {
         let catalog = try stamped(FetchDescriptor<CatalogItem>(), in: context)
         let taxes = try stamped(FetchDescriptor<TaxSchedule>(), in: context)
         let invoices = try stamped(FetchDescriptor<Invoice>(), in: context)
+        let quotes = try stamped(FetchDescriptor<Quote>(), in: context)
         let contracts = try stamped(FetchDescriptor<Contract>(), in: context)
         let events = try stamped(FetchDescriptor<BooksEvent>(), in: context)
 
@@ -55,6 +57,7 @@ enum BackupExport {
             catalog: scope.includesCatalog ? catalog.map(catalogItem).sorted { $0.archiveID < $1.archiveID } : [],
             taxSchedules: scope.includesCatalog ? taxes.map(tax).sorted { $0.archiveID < $1.archiveID } : [],
             invoices: scope.includesBooks ? invoices.map(invoice).sorted { $0.archiveID < $1.archiveID } : [],
+            quotes: scope.includesBooks ? quotes.map { quote($0, bodies: &bodies, media: &media) }.sorted { $0.archiveID < $1.archiveID } : [],
             contracts: scope.includesBooks ? contracts.map { contract($0, bodies: &bodies) }.sorted { $0.archiveID < $1.archiveID } : [],
             events: scope.includesBooks ? events.map(event).sorted { $0.archiveID < $1.archiveID } : [],
             preferences: scope.includesPreferences ? BackupPreferenceStore.capture(defaults) : nil
@@ -207,6 +210,60 @@ enum BackupExport {
         )
     }
 
+    private static func quote(
+        _ quote: Quote,
+        bodies: inout [String: Data],
+        media: inout [String: Data]
+    ) -> BackupFile.Quote {
+        let agreementHash: String?
+        if quote.agreementHTML.isEmpty {
+            agreementHash = nil
+        } else {
+            let digest = BackupIdentity.digest(quote.agreementHTML)
+            bodies[digest] = Data(quote.agreementHTML.utf8)
+            agreementHash = digest
+        }
+        return BackupFile.Quote(
+            archiveID: quote.archiveID,
+            number: quote.number,
+            quoteDate: quote.quoteDate,
+            validUntil: quote.validUntil,
+            status: quote.statusRaw,
+            tax: BackupMoney.text(quote.tax),
+            taxRate: quote.taxRate.map(BackupMoney.text),
+            taxScheduleName: quote.taxScheduleName,
+            invoiceTaxable: quote.invoiceTaxable,
+            discount: BackupMoney.text(quote.discount),
+            shipping: BackupMoney.text(quote.shipping),
+            total: BackupMoney.text(quote.total),
+            billToName: quote.billToName,
+            note: quote.note,
+            closing: quote.closing,
+            agreementTitle: quote.agreementTitle,
+            sentAt: quote.sentAt,
+            signedAt: quote.signedAt,
+            contactID: link(quote.contact?.archiveID),
+            jobID: link(quote.job?.archiveID),
+            studioID: link(quote.studio?.archiveID),
+            invoiceID: link(quote.convertedInvoice?.archiveID),
+            agreementBodyFile: agreementHash,
+            evidenceFile: file(for: quote.signedEvidenceData, media: &media),
+            lines: quote.sortedLines.map { line in
+                BackupFile.Line(
+                    shootqID: nil,
+                    name: line.name,
+                    detail: line.detail,
+                    quantity: BackupMoney.text(line.quantity),
+                    unitPrice: BackupMoney.text(line.unitPrice),
+                    position: line.position,
+                    packageName: "",
+                    taxable: line.taxable,
+                    catalogID: link(line.catalogItem?.archiveID)
+                )
+            }
+        )
+    }
+
     private static func contract(_ contract: Contract, bodies: inout [String: Data]) -> BackupFile.Contract {
         let html = contract.html
         let hash: String?
@@ -224,6 +281,7 @@ enum BackupExport {
             status: contract.status,
             eventLabel: contract.eventLabel,
             sentAt: contract.sentAt,
+            isTemplate: contract.isTemplate,
             jobID: link(contract.job?.archiveID),
             bodyFile: hash,
             signatures: contract.signatures.map(signature).sorted { $0.displayName < $1.displayName }
@@ -282,5 +340,6 @@ extension Job: ArchiveStamped {}
 extension CatalogItem: ArchiveStamped {}
 extension TaxSchedule: ArchiveStamped {}
 extension Invoice: ArchiveStamped {}
+extension Quote: ArchiveStamped {}
 extension Contract: ArchiveStamped {}
 extension BooksEvent: ArchiveStamped {}

@@ -4,6 +4,7 @@ import SwiftUI
 struct JobDetailView: View {
     var job: Job
     var onOpenInvoice: (PersistentIdentifier) -> Void
+    var onOpenQuote: (PersistentIdentifier) -> Void = { _ in }
 
     var body: some View {
         ScrollView {
@@ -32,6 +33,30 @@ struct JobDetailView: View {
                     contracts: ContractLinks.forJob(job),
                     emptyMessage: "No contracts for this job."
                 )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Quotes", systemImage: "doc.plaintext")
+                        .font(.headline)
+                    if job.quotes.isEmpty {
+                        Text("No quotes for this job.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(job.quotes.sorted { $0.quoteDate > $1.quoteDate }) { quote in
+                            Button {
+                                onOpenQuote(quote.persistentModelID)
+                            } label: {
+                                HStack {
+                                    Text(quote.displayNumber)
+                                    QuoteStatusBadge(status: quote.status)
+                                    Spacer()
+                                    Text(StudioMoney.string(quote.total))
+                                        .monospacedDigit()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Invoices", systemImage: "doc.text")
@@ -92,6 +117,7 @@ struct JobEditorSheet: View {
     @State private var eventDate = Date.now
     @State private var hasDate = true
     @State private var contact: Contact?
+    @State private var contactEditor: ContactEditorMode?
     @FocusState private var nameFocused: Bool
 
     init(contacts: [Contact], contact: Contact? = nil, job: Job? = nil, onSave: @escaping (Job) -> Void = { _ in }) {
@@ -133,7 +159,11 @@ struct JobEditorSheet: View {
                 if hasDate {
                     DatePicker("Date", selection: $eventDate, displayedComponents: .date)
                 }
-                ContactPickerField(contacts: contacts, selection: $contact)
+                ContactPickerField(
+                    contacts: contacts,
+                    selection: $contact,
+                    onAdd: { contactEditor = .new }
+                )
             }
             .formStyle(.grouped)
             HStack {
@@ -147,6 +177,11 @@ struct JobEditorSheet: View {
         .padding(24)
         .frame(width: 520)
         .studioActive()
+        .sheet(item: $contactEditor) { mode in
+            ContactEditorSheet(mode: mode) { saved in
+                contact = saved
+            }
+        }
         .alert("Add Type", isPresented: $showAddType) {
             TextField("Type", text: $newTypeName)
             Button("Add", action: commitNewType)

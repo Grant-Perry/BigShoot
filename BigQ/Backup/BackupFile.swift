@@ -11,9 +11,79 @@ struct BackupFile: Codable, Sendable, Equatable {
     var catalog: [CatalogItem]
     var taxSchedules: [TaxSchedule]
     var invoices: [Invoice]
+    var quotes: [Quote]
     var contracts: [Contract]
     var events: [BooksEvent]
     var preferences: BackupPreferences?
+
+    enum CodingKeys: String, CodingKey {
+        case format, scope, createdAt, studios, contacts, jobs, catalog, taxSchedules
+        case invoices, quotes, contracts, events, preferences
+    }
+
+    init(
+        format: Int,
+        scope: String,
+        createdAt: Date,
+        studios: [Studio],
+        contacts: [Contact],
+        jobs: [Job],
+        catalog: [CatalogItem],
+        taxSchedules: [TaxSchedule],
+        invoices: [Invoice],
+        quotes: [Quote] = [],
+        contracts: [Contract],
+        events: [BooksEvent],
+        preferences: BackupPreferences?
+    ) {
+        self.format = format
+        self.scope = scope
+        self.createdAt = createdAt
+        self.studios = studios
+        self.contacts = contacts
+        self.jobs = jobs
+        self.catalog = catalog
+        self.taxSchedules = taxSchedules
+        self.invoices = invoices
+        self.quotes = quotes
+        self.contracts = contracts
+        self.events = events
+        self.preferences = preferences
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        format = try container.decode(Int.self, forKey: .format)
+        scope = try container.decode(String.self, forKey: .scope)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        studios = try container.decode([Studio].self, forKey: .studios)
+        contacts = try container.decode([Contact].self, forKey: .contacts)
+        jobs = try container.decode([Job].self, forKey: .jobs)
+        catalog = try container.decode([CatalogItem].self, forKey: .catalog)
+        taxSchedules = try container.decode([TaxSchedule].self, forKey: .taxSchedules)
+        invoices = try container.decode([Invoice].self, forKey: .invoices)
+        quotes = try container.decodeIfPresent([Quote].self, forKey: .quotes) ?? []
+        contracts = try container.decode([Contract].self, forKey: .contracts)
+        events = try container.decode([BooksEvent].self, forKey: .events)
+        preferences = try container.decodeIfPresent(BackupPreferences.self, forKey: .preferences)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(format, forKey: .format)
+        try container.encode(scope, forKey: .scope)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(studios, forKey: .studios)
+        try container.encode(contacts, forKey: .contacts)
+        try container.encode(jobs, forKey: .jobs)
+        try container.encode(catalog, forKey: .catalog)
+        try container.encode(taxSchedules, forKey: .taxSchedules)
+        try container.encode(invoices, forKey: .invoices)
+        try container.encode(quotes, forKey: .quotes)
+        try container.encode(contracts, forKey: .contracts)
+        try container.encode(events, forKey: .events)
+        try container.encodeIfPresent(preferences, forKey: .preferences)
+    }
 
     struct Studio: Codable, Sendable, Equatable {
         var archiveID: String
@@ -129,6 +199,36 @@ struct BackupFile: Codable, Sendable, Equatable {
         var method: String
     }
 
+    struct Quote: Codable, Sendable, Equatable {
+        var archiveID: String
+        var number: String
+        var quoteDate: Date
+        var validUntil: Date?
+        var status: String
+        var tax: String
+        var taxRate: String?
+        var taxScheduleName: String?
+        var invoiceTaxable: Bool?
+        var discount: String
+        var shipping: String
+        var total: String
+        var billToName: String
+        var note: String
+        var closing: String
+        var agreementTitle: String
+        var sentAt: Date?
+        var signedAt: Date?
+        var contactID: String?
+        var jobID: String?
+        var studioID: String?
+        var invoiceID: String?
+        /// SHA-256 of the agreement HTML.
+        var agreementBodyFile: String?
+        /// SHA-256 of the returned signed PDF, when present.
+        var evidenceFile: String?
+        var lines: [Line]
+    }
+
     struct Contract: Codable, Sendable, Equatable {
         var archiveID: String
         var shootqID: String?
@@ -136,6 +236,7 @@ struct BackupFile: Codable, Sendable, Equatable {
         var status: String
         var eventLabel: String
         var sentAt: Date?
+        var isTemplate: Bool?
         var jobID: String?
         /// SHA-256 of the agreement HTML. The bytes are `bodies/<hash>.html`.
         var bodyFile: String?
@@ -170,6 +271,7 @@ struct BackupFile: Codable, Sendable, Equatable {
             catalog: catalog.count,
             taxSchedules: taxSchedules.count,
             invoices: invoices.count,
+            quotes: quotes.count,
             contracts: contracts.count,
             events: events.count
         )

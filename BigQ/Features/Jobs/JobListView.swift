@@ -4,6 +4,7 @@ import SwiftUI
 struct JobWorkspace: View {
     @Binding var selection: PersistentIdentifier?
     var onOpenInvoice: (PersistentIdentifier) -> Void
+    var onOpenQuote: (PersistentIdentifier) -> Void = { _ in }
 
     @Query private var jobs: [Job]
     @Query(sort: \Contact.fullName) private var contacts: [Contact]
@@ -37,7 +38,7 @@ struct JobWorkspace: View {
             Divider()
             Group {
                 if let selected {
-                    JobDetailView(job: selected, onOpenInvoice: onOpenInvoice)
+                    JobDetailView(job: selected, onOpenInvoice: onOpenInvoice, onOpenQuote: onOpenQuote)
                 } else {
                     StudioEmptyState(
                         title: "No job selected",

@@ -13,6 +13,7 @@ struct NewInvoiceSheet: View {
     @State private var draft = InvoiceDraftModel()
     @State private var errorMessage: String?
     @State private var jobEditor: JobEditorLaunch?
+    @State private var contactEditor: ContactEditorMode?
     @State private var additionalWorkJobID: PersistentIdentifier?
     @State private var bypassPrompt: JobBypass?
     @State private var previewSession: InvoicePreviewSession?
@@ -71,6 +72,12 @@ struct NewInvoiceSheet: View {
                 draft.job = saved
             }
         }
+        .sheet(item: $contactEditor) { mode in
+            ContactEditorSheet(mode: mode) { saved in
+                draft.contact = saved
+                draft.job = nil
+            }
+        }
         .sheet(item: $previewSession) { session in
             InvoicePDFPreviewSheet(invoice: session.invoice, note: nil, onSubmit: submitFromPreview)
         }
@@ -111,7 +118,12 @@ struct NewInvoiceSheet: View {
     private var clientColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 20) {
-                ContactPickerField(contacts: contacts, selection: $draft.contact, label: "Client:")
+                ContactPickerField(
+                    contacts: contacts,
+                    selection: $draft.contact,
+                    label: "Client:",
+                    onAdd: { contactEditor = .new }
+                )
                     .frame(maxWidth: .infinity, alignment: .leading)
                 JobMenuPicker(
                     jobs: jobs,

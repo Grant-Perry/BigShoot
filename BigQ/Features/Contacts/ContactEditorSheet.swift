@@ -5,6 +5,7 @@ struct ContactEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     var mode: ContactEditorMode
+    var onSaved: (Contact) -> Void = { _ in }
 
     @State private var firstName = ""
     @State private var lastName = ""
@@ -80,6 +81,7 @@ struct ContactEditorSheet: View {
         contact.address = address.trimmingCharacters(in: .whitespacesAndNewlines)
         contact.anniversary = hasAnniversary ? anniversary : nil
         try? modelContext.save()
+        onSaved(contact)
         dismiss()
     }
 }

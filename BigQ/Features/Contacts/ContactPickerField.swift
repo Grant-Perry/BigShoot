@@ -6,6 +6,7 @@ struct ContactPickerField: View {
     let contacts: [Contact]
     @Binding var selection: Contact?
     var label = "Client"
+    var onAdd: () -> Void = {}
 
     @State private var isOpen = false
 
@@ -34,7 +35,15 @@ struct ContactPickerField: View {
             .accessibilityValue(title)
         }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
-            ContactPickerList(contacts: contacts, selection: $selection, isOpen: $isOpen)
+            ContactPickerList(
+                contacts: contacts,
+                selection: $selection,
+                isOpen: $isOpen,
+                onAdd: {
+                    isOpen = false
+                    onAdd()
+                }
+            )
         }
     }
 }
@@ -43,6 +52,7 @@ private struct ContactPickerList: View {
     let contacts: [Contact]
     @Binding var selection: Contact?
     @Binding var isOpen: Bool
+    var onAdd: () -> Void
 
     @State private var query = ""
     @FocusState private var searchFocused: Bool
@@ -65,6 +75,15 @@ private struct ContactPickerList: View {
                 .focused($searchFocused)
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
+                    ContactPickerRow(
+                        name: "Add New",
+                        systemImage: "plus",
+                        isSelected: false
+                    ) {
+                        onAdd()
+                    }
+                    Divider()
+                        .padding(.vertical, 4)
                     if matches.isEmpty {
                         Text(query.isEmpty ? "No clients yet." : "No client matches that.")
                             .foregroundStyle(.secondary)
@@ -89,7 +108,7 @@ private struct ContactPickerList: View {
         }
         .padding(10)
         .frame(width: 380)
-        .frame(height: min(420, CGFloat(max(matches.count, 1)) * 40 + 56))
+        .frame(height: min(420, CGFloat(max(matches.count, 1)) * 40 + 104))
         .onAppear {
             Task { @MainActor in
                 searchFocused = true
@@ -101,6 +120,7 @@ private struct ContactPickerList: View {
 private struct ContactPickerRow: View {
     let name: String
     var detail: String?
+    var systemImage: String? = "person"
     var isSelected: Bool
     var action: () -> Void
 
@@ -109,7 +129,7 @@ private struct ContactPickerRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: isSelected ? "checkmark" : "person")
+                rowIcon
                     .frame(width: 16, height: 16)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
@@ -133,5 +153,16 @@ private struct ContactPickerRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(name)
         .onHover { hovered = $0 }
+    }
+
+    @ViewBuilder
+    private var rowIcon: some View {
+        if isSelected {
+            Image(systemName: "checkmark")
+        } else if let systemImage {
+            Image(systemName: systemImage)
+        } else {
+            Color.clear
+        }
     }
 }
