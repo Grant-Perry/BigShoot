@@ -77,6 +77,26 @@ final class AgreementEditorSession {
         )
     }
 
+    /// Cheap Save path — no normalize, no SwiftUI publish.
+    func pullRawPlainText() -> String {
+        textView?.string ?? html
+    }
+
+    /// Empty the text storage + undo stack before SwiftUI destroys the representable.
+    /// Tearing down a wedding-length attributed string on dismiss is a main-thread beachball.
+    func gutForTeardown() {
+        onCommit = nil
+        guard let textView else { return }
+        textView.delegate = nil
+        textView.undoManager?.removeAllActions()
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.beginEditing()
+            storage.setAttributedString(NSAttributedString(string: ""))
+            storage.endEditing()
+        }
+        self.textView = nil
+    }
+
     func commitFromTextView() {
         pullFromTextView()
         onCommit?(html)
@@ -157,7 +177,16 @@ enum AgreementRichTextEditing {
                 ]
             )
         } else {
-            insertion = forceSans(attributed(from: fragment), uniformSize: baseSize)
+            // Plain text only. NSAttributedString's HTML importer launches the out-of-process
+            // nsattributedstringagent (WebKit) and blocks main until it answers — every chip
+            // insert was a beachball. Merge values are plain text + <br>, so strip instead.
+            insertion = NSAttributedString(
+                string: plainFragment(fromHTML: fragment),
+                attributes: [
+                    .font: bodyFont(size: baseSize),
+                    .foregroundColor: NSColor.labelColor,
+                ]
+            )
         }
         textView.textStorage?.replaceCharacters(in: selected, with: insertion)
         let cursor = selected.location + insertion.length
@@ -177,6 +206,22 @@ enum AgreementRichTextEditing {
             .components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    private static func plainFragment(fromHTML fragment: String) -> String {
+        var text = fragment
+            .replacingOccurrences(of: "&#8232;", with: "\u{2028}")
+            .replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)</(p|div|li)>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        let entities: [(String, String)] = [
+            ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">"),
+            ("&quot;", "\""), ("&#39;", "'"), ("&amp;", "&"),
+        ]
+        for (entity, value) in entities {
+            text = text.replacingOccurrences(of: entity, with: value, options: .caseInsensitive)
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func looksLikePaymentTerms(_ lines: [String]) -> Bool {

@@ -153,6 +153,13 @@ enum AgreementFieldTable {
                       let field = takeField(from: lines, index: &index, title: title) {
                     rows.append(field)
                 }
+                // `Address:` with no value, followed by another field (`Email: …`), parses as a
+                // field but takeField rejects it. Without this, index never advances → infinite loop.
+                if rows.isEmpty {
+                    parts.append("<p>\(escape(line))</p>")
+                    index += 1
+                    continue
+                }
                 for row in rows {
                     let valueLines = row.value
                         .replacingOccurrences(of: "\u{2028}", with: "\n")

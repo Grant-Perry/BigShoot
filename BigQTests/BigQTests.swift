@@ -9,6 +9,15 @@ import Testing
 
 @MainActor
 struct BigQTests {
+    @Test func normalizedHTMLAdvancesPastEmptyFieldBeforeAnotherField() {
+        // Regression: `Address:` (empty) then `Email: …` looped forever on Save.
+        let raw = "Client Name: Frank Engel\nAddress:\nEmail: engelatnona@aol.com\nPhone:\nWedding Date: Oct 3, 2027"
+        let html = AgreementFieldTable.normalizedHTML(from: raw, agreementTitle: "Wedding Agreement")
+        #expect(html.contains("Address:"))
+        #expect(html.contains("Email: engelatnona@aol.com"))
+        #expect(html.contains("Wedding Date: Oct 3, 2027"))
+    }
+
     @Test func jobTypeCatalogStartsWithCommercialAndWeddings() {
         let catalog = JobTypeCatalog(defaults: isolatedDefaults("empty"))
         #expect(catalog.names == ["Commercial", "Weddings"])

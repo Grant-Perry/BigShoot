@@ -78,13 +78,20 @@ struct AgreementRichTextEditor: NSViewRepresentable {
         func textDidBeginEditing(_ notification: Notification) {}
 
         func textDidEndEditing(_ notification: Notification) {
-            // Commit HTML once on blur. Never restyle/replaceDocument here —
-            // that re-enters AppKit while SwiftUI is still tearing down first responder.
+            // Commit HTML once on blur — but never synchronously. Save/Preview already
+            // defer past resign; a sync highlight+normalize here collides with those
+            // buttons and beachballs long wedding agreements.
             guard !isHydrating,
                   let textView = notification.object as? NSTextView else { return }
-            // Chip paint is cheap enough on blur; skip full-document font walks.
-            AgreementRichTextEditing.highlightTokens(in: textView, lightweight: true)
-            session.commitFromTextView()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(50))
+                // Sheet may have dismissed (Save/Cancel) — do not touch a dying text view.
+                guard !isHydrating,
+                      session.textView === textView,
+                      session.onCommit != nil else { return }
+                // Chips are already painted on load/insert — skip the full-doc walk.
+                session.commitFromTextView()
+            }
         }
 
         func textDidChange(_ notification: Notification) {

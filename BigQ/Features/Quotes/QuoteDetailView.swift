@@ -8,9 +8,15 @@ struct QuoteDetailView: View {
     var onPreviewContract: () -> Void = {}
     var onSend: () -> Void
     var onEdit: () -> Void
+    var onEditAgreement: () -> Void = {}
     var onMarkSigned: () -> Void
     var onOpenInvoice: (PersistentIdentifier) -> Void
     var onDelete: () -> Void
+
+    @State private var isAgreementExpanded = false
+    /// Token for the HTML we expanded. When Save writes new HTML, the token
+    /// mismatches and the heavy `AgreementDocumentView` unmounts instead of re-parsing.
+    @State private var expandedAgreementToken = 0
 
     var body: some View {
         ScrollView {
@@ -25,6 +31,8 @@ struct QuoteDetailView: View {
 
                 if quote.hasAgreement {
                     agreementCard
+                } else if quote.canEdit {
+                    addAgreementCard
                 }
 
                 linesCard
@@ -43,6 +51,15 @@ struct QuoteDetailView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Edit", systemImage: "pencil", action: onEdit)
                 }
+                ToolbarItem {
+                    if quote.hasAgreement {
+                        Button("Edit Agreement", systemImage: "text.document", action: editAgreement)
+                            .help("Edit contract language on this quote")
+                    } else {
+                        Button("Add Agreement", systemImage: "doc.badge.plus", action: editAgreement)
+                            .help("Attach an agreement to this quote")
+                    }
+                }
             }
             ToolbarItem {
                 Button("Preview PDF", systemImage: "doc.richtext", action: onPreview)
@@ -60,7 +77,7 @@ struct QuoteDetailView: View {
             }
             if quote.canMarkSigned {
                 ToolbarItem {
-                    Button("Mark Signed", systemImage: "signature", action: onMarkSigned)
+                    Button("Mark Signed", systemImage: "checkmark.seal", action: onMarkSigned)
                         .help("Convert this quote into an invoice")
                 }
             }
@@ -182,20 +199,90 @@ struct QuoteDetailView: View {
 
     // MARK: - Agreement
 
+    private var agreementContentToken: Int {
+        var hasher = Hasher()
+        hasher.combine(quote.agreementTitle)
+        hasher.combine(quote.agreementHTML.count)
+        hasher.combine(quote.agreementHTML.prefix(48))
+        hasher.combine(quote.agreementHTML.suffix(48))
+        return hasher.finalize()
+    }
+
+    private var isShowingAgreementBody: Bool {
+        isAgreementExpanded && expandedAgreementToken == agreementContentToken
+    }
+
+    private func editAgreement() {
+        isAgreementExpanded = false
+        onEditAgreement()
+    }
+
     private var agreementCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Agreement", systemImage: "signature")
-                .font(.headline)
-            AgreementDocumentView(
-                html: resolvedAgreement,
-                agreementTitle: quote.agreementTitle.isEmpty ? "Untitled agreement" : quote.agreementTitle,
-                style: .ambient
-            )
-            .font(.callout)
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.snappy(duration: 0.25)) {
+                        if isShowingAgreementBody {
+                            isAgreementExpanded = false
+                        } else {
+                            expandedAgreementToken = agreementContentToken
+                            isAgreementExpanded = true
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Label("Agreement", systemImage: "signature")
+                            .font(.headline)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isShowingAgreementBody ? 90 : 0))
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Agreement")
+                .accessibilityValue(isShowingAgreementBody ? "Expanded" : "Collapsed")
+                .accessibilityHint(isShowingAgreementBody ? "Collapse agreement" : "Expand agreement")
+
+                Spacer(minLength: 8)
+
+                if quote.canEdit {
+                    Button("Edit", systemImage: "pencil", action: editAgreement)
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help("Edit this quote’s agreement")
+                }
+            }
+
+            if isShowingAgreementBody {
+                AgreementDocumentView(
+                    html: resolvedAgreement,
+                    agreementTitle: quote.agreementTitle.isEmpty ? "Untitled agreement" : quote.agreementTitle,
+                    style: .ambient
+                )
+                .font(.callout)
+            }
         }
         .padding(StudioDesign.Spacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
         .studioCard()
+    }
+
+    private var addAgreementCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Agreement", systemImage: "signature")
+                .font(.headline)
+            Text("Attach contract language for the client to sign with this quote.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Add agreement", systemImage: "signature", action: onEditAgreement)
+                .buttonStyle(.bordered)
+        }
+        .padding(StudioDesign.Spacing.card)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .paperCard()
     }
 
     // MARK: - Line items

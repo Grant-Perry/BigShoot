@@ -38,6 +38,7 @@ struct QuoteWorkspace: View {
     @State private var previewQuote: Quote?
     @State private var previewAgreementOnly = false
     @State private var editingQuote: Quote?
+    @State private var editingAgreement: Quote?
     @State private var mailNote: String?
     @State private var convertError: String?
     @State private var deleteTarget: Quote?
@@ -78,6 +79,7 @@ struct QuoteWorkspace: View {
                         },
                         onSend: { send(selected) },
                         onEdit: { editingQuote = selected },
+                        onEditAgreement: { editingAgreement = selected },
                         onMarkSigned: { beginConvert(selected) },
                         onOpenInvoice: onOpenInvoice,
                         onDelete: { deleteTarget = selected }
@@ -98,6 +100,9 @@ struct QuoteWorkspace: View {
         }
         .sheet(item: $editingQuote) { quote in
             NewQuoteSheet(existing: quote)
+        }
+        .sheet(item: $editingAgreement) { quote in
+            QuoteAgreementSheet(quote: quote)
         }
         .sheet(item: $previewQuote) { quote in
             QuotePDFPreviewSheet(quote: quote, agreementOnly: previewAgreementOnly)

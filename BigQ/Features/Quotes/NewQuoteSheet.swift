@@ -1,14 +1,14 @@
 import SwiftData
 import SwiftUI
 
+/// Pricing-only quote editor. Agreement lives in `QuoteAgreementSheet` —
+/// nesting NSTextView here caused layout clipping and main-thread beachballs.
 struct NewQuoteSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Contact.fullName) private var contacts: [Contact]
     @Query(sort: \CatalogItem.name) private var catalog: [CatalogItem]
     @Query(sort: \TaxSchedule.name) private var schedules: [TaxSchedule]
-    @Query(filter: #Predicate<Contract> { $0.isTemplate }, sort: \Contract.title)
-    private var templates: [Contract]
 
     var existing: Quote?
     @State private var draft: QuoteDraftModel
@@ -16,13 +16,7 @@ struct NewQuoteSheet: View {
     @State private var jobEditor: JobEditorLaunch?
     @State private var contactEditor: ContactEditorMode?
     @State private var previewSession: QuotePreviewSession?
-    @State private var previewAgreementOnly = false
     @State private var includeValidUntil: Bool
-    @State private var agreementFlush = AgreementEditFlush()
-    /// Mount the NSTextView after the sheet chrome is on screen — sync load of a
-    /// wedding agreement during presentation beachballs.
-    @State private var mountAgreementEditor = false
-    @State private var allowAgreementAutofill = false
 
     init(existing: Quote? = nil) {
         self.existing = existing
@@ -50,106 +44,36 @@ struct NewQuoteSheet: View {
     var body: some View {
         @Bindable var draft = draft
         @Bindable var pricing = draft.pricing
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 Text(editorTitle)
                     .font(StudioDesign.displayTitle)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(1)
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .help("See the quote PDF without saving")
             }
-            .padding(.top, 4)
-            .padding(.bottom, 16)
 
-            // Top form scrolls on its own. Agreement editor stays outside — nesting
-            // NSTextView inside SwiftUI ScrollView beachballs while typing.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    clientColumn(pricing: pricing)
-                    QuotePaymentTermsSection(draft: draft)
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+            clientColumn(pricing: pricing)
+            QuotePaymentTermsSection(draft: draft)
+            if let errorMessage {
+                Text(errorMessage)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity)
-            .frame(maxHeight: 280)
-
-            Group {
-                if mountAgreementEditor {
-                    QuoteAgreementEditor(
-                        title: $draft.agreementTitle,
-                        html: $draft.agreementHTML,
-                        templates: templates,
-                        onApplyTemplate: { template, answers in
-                            draft.applyTemplate(template, askAnswers: answers)
-                            draft.fillKnownAgreementFields(studio: primaryStudio)
-                        },
-                        onClear: draft.clearAgreement,
-                        onPreview: showContractPreview,
-                        flush: agreementFlush,
-                        polishHTML: { source in
-                            AgreementMerge.resolve(
-                                source,
-                                with: draft.agreementMergeContext(studio: primaryStudio),
-                                skipEmptyValues: true
-                            )
-                        }
-                    )
-                } else {
-                    VStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading agreement…")
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .studioCard(cornerRadius: 10)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
-            .padding(.top, 12)
-
-            // Don't wrap in another height-capped ScrollView — that clipped Subtotal/Tax/Total.
-            // InvoiceLinesEditor already scrolls its own rows and keeps totals below them.
             InvoiceLinesEditor(draft: pricing, catalog: catalog)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 12)
-
             footer
-                .padding(.top, 16)
         }
         .padding(24)
-        .frame(minWidth: 980, idealWidth: 1040)
-        .frame(minHeight: 700, idealHeight: 820, maxHeight: 920)
+        .frame(minWidth: 900, idealWidth: 980)
+        .frame(width: 980)
+        .fixedSize(horizontal: false, vertical: true)
         .studioActive()
         .focusedSceneValue(\.invoiceEditorActive, true)
-        .onAppear {
-            // Let the sheet present first, then mount/parse the agreement off that turn.
-            Task { @MainActor in
-                await Task.yield()
-                mountAgreementEditor = true
-                await Task.yield()
-                allowAgreementAutofill = true
-            }
-        }
-        .onChange(of: draft.paymentScheduleMode) { _, _ in
-            guard allowAgreementAutofill else { return }
-            agreementFlush.call()
-            draft.fillKnownAgreementFields(studio: primaryStudio)
-        }
-        .onChange(of: draft.paymentTerms) { _, _ in
-            guard allowAgreementAutofill else { return }
-            agreementFlush.call()
-            draft.fillKnownAgreementFields(studio: primaryStudio)
-        }
         .sheet(item: $jobEditor) { launch in
             JobEditorSheet(contacts: contacts, contact: draft.pricing.contact, job: launch.job) { saved in
                 draft.pricing.contact = saved.contact ?? draft.pricing.contact
@@ -163,7 +87,7 @@ struct NewQuoteSheet: View {
             }
         }
         .sheet(item: $previewSession) { session in
-            QuotePDFPreviewSheet(quote: session.quote, agreementOnly: previewAgreementOnly)
+            QuotePDFPreviewSheet(quote: session.quote, agreementOnly: false)
         }
     }
 
@@ -242,7 +166,7 @@ struct NewQuoteSheet: View {
         }
     }
 
-    /// Agreement client fields always follow the job’s contact.
+    /// Agreement HTML still adopts from the job when empty — editing happens in QuoteAgreementSheet.
     private func selectJob(_ job: Job?) {
         draft.pricing.job = job
         syncClientFromJob()
@@ -270,7 +194,6 @@ struct NewQuoteSheet: View {
         existing?.studio ?? (try? StudioBrandDirectory.primary(in: modelContext))
     }
 
-    /// `[Event Date]`, payment “days before event,” and the agreement all use the job’s date.
     @ViewBuilder
     private func eventDateField(pricing: InvoiceDraftModel) -> some View {
         if pricing.job != nil {
@@ -323,27 +246,11 @@ struct NewQuoteSheet: View {
     }
 
     private func showPreview() {
-        openPreview(agreementOnly: false)
-    }
-
-    private func showContractPreview() {
-        openPreview(agreementOnly: true)
-    }
-
-    private func openPreview(agreementOnly: Bool) {
-        agreementFlush.call()
         if AgreementAskField.hasUnresolvedAsks(in: draft.agreementHTML) {
             errorMessage = "Fill the Ask fields on the agreement before previewing."
             return
         }
-        if agreementOnly,
-           draft.agreementTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           draft.agreementHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorMessage = "Add an agreement before previewing the contract."
-            return
-        }
         do {
-            previewAgreementOnly = agreementOnly
             previewSession = try draft.makePreview(studio: primaryStudio)
         } catch {
             errorMessage = "Couldn’t open the preview."
@@ -351,7 +258,6 @@ struct NewQuoteSheet: View {
     }
 
     private func save(markSent: Bool) {
-        agreementFlush.call()
         do {
             _ = try draft.save(in: modelContext, markSent: markSent)
             dismiss()

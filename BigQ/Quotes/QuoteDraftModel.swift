@@ -134,6 +134,20 @@ final class QuoteDraftModel {
         agreementHTML = ""
     }
 
+    /// Persists agreement title and HTML on an existing quote (agreement-only sheet).
+    func saveAgreement(in context: ModelContext) throws {
+        guard let editingID, let quote = context.model(for: editingID) as? Quote else {
+            throw QuoteDraftError.agreementRequiresSavedQuote
+        }
+        quote.agreementTitle = agreementTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        quote.agreementHTML = AgreementMerge.resolve(
+            agreementHTML,
+            with: agreementMergeContext(studio: quote.studio),
+            skipEmptyValues: false
+        )
+        try context.save()
+    }
+
     func refreshPaymentAmounts() {
         QuotePaymentSchedule.recalculate(&paymentTerms, total: pricing.total)
     }
@@ -344,11 +358,14 @@ final class QuoteDraftModel {
 
 enum QuoteDraftError: LocalizedError, Equatable {
     case incompletePaymentSchedule
+    case agreementRequiresSavedQuote
 
     var errorDescription: String? {
         switch self {
         case .incompletePaymentSchedule:
             "Payment terms must add up to 100% of the quote total."
+        case .agreementRequiresSavedQuote:
+            "Save the quote before editing its agreement."
         }
     }
 }

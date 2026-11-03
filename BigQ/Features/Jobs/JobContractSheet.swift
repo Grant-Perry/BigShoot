@@ -16,6 +16,8 @@ struct JobContractSheet: View {
     @State private var errorMessage: String?
     @State private var previewItem: ContractPreviewItem?
     @State private var agreementFlush = AgreementEditFlush()
+    @State private var editorMounted = false
+    @State private var isSaving = false
 
     private var editorTitle: String {
         existing == nil ? "Add contract" : "Edit contract"
@@ -48,17 +50,24 @@ struct JobContractSheet: View {
             }
 
             // Keep NSTextView out of SwiftUI ScrollView — nested scrolling beachballs on type.
-            QuoteAgreementEditor(
-                title: $title,
-                html: $html,
-                templates: templates,
-                onApplyTemplate: applyTemplate,
-                onClear: clearAgreement,
-                onPreview: showPreview,
-                flush: agreementFlush,
-                mergeSourceLabel: "this job’s client",
-                polishHTML: fillKnownFields
-            )
+            Group {
+                if editorMounted {
+                    QuoteAgreementEditor(
+                        title: $title,
+                        html: $html,
+                        templates: templates,
+                        onApplyTemplate: applyTemplate,
+                        onClear: clearAgreement,
+                        onPreview: showPreview,
+                        flush: agreementFlush,
+                        mergeSourceLabel: "this job’s client",
+                        polishHTML: fillKnownFields
+                    )
+                } else {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .layoutPriority(1)
 
@@ -106,7 +115,10 @@ struct JobContractSheet: View {
             Spacer(minLength: 0)
             if job.contact != nil, hasBody, hasFillableClientTokens {
                 Button("Fill Client Fields") {
-                    html = fillKnownFields(html)
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(50))
+                        html = fillKnownFields(html)
+                    }
                 }
                 .help("Replace blue client and job chips with this job’s contact info")
             }
@@ -131,10 +143,13 @@ struct JobContractSheet: View {
         HStack {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
+                .disabled(isSaving)
+                .focusable(false)
             Button("Save Draft") { save() }
                 .buttonStyle(.borderedProminent)
-                .disabled(!hasBody)
+                .disabled(!hasBody || isSaving)
                 .keyboardShortcut(.defaultAction)
+                .focusable(false)
         }
     }
 
@@ -142,6 +157,12 @@ struct JobContractSheet: View {
         if let existing {
             title = existing.title
             html = fillKnownFields(existing.html)
+        }
+        editorMounted = false
+        Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(80))
+            editorMounted = true
         }
     }
 
@@ -185,47 +206,83 @@ struct JobContractSheet: View {
     }
 
     private func save() {
-        agreementFlush.call()
-        if AgreementAskField.hasUnresolvedAsks(in: html) {
-            errorMessage = "Fill the Ask fields on the agreement before saving."
-            return
-        }
-        guard hasBody else { return }
-        guard job.contact != nil else {
-            errorMessage = "Link a client on the job before saving a contract."
-            return
-        }
+        guard !isSaving else { return }
 
-        let resolved = resolvedHTML()
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let contract: Contract
-        if let existing {
-            contract = existing
-            contract.title = trimmedTitle.isEmpty ? "Agreement" : trimmedTitle
-            contract.html = resolved
-            contract.eventLabel = StudioDay.string(job.eventDate)
-            contract.job = job
-            if contract.status.isEmpty || contract.status == "template" {
-                contract.status = "draft"
-            }
-        } else {
-            contract = Contract(
-                title: trimmedTitle.isEmpty ? "Agreement" : trimmedTitle,
-                status: "draft",
-                html: resolved,
-                eventLabel: StudioDay.string(job.eventDate),
-                isTemplate: false,
-                job: job
+        agreementFlush.disarmPublishing()
+        let titleSnapshot = title
+        let raw = agreementFlush.pullRawPlainText()
+        agreementFlush.gutEditor()
+        agreementFlush.run = {}
+        agreementFlush.pull = { "" }
+        agreementFlush.pullRaw = { "" }
+        agreementFlush.disarm = {}
+        agreementFlush.gut = {}
+        editorMounted = false
+        isSaving = true
+
+        Task { @MainActor in
+            await Task.yield()
+
+            // Safe now — text view is gutted; this is pure string work.
+            let normalized = AgreementFieldTable.normalizedHTML(
+                from: raw,
+                agreementTitle: titleSnapshot
             )
-            modelContext.insert(contract)
-        }
+            html = normalized
 
-        ensureSigner(on: contract)
-        do {
-            try modelContext.save()
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+            if AgreementAskField.hasUnresolvedAsks(in: html) {
+                errorMessage = "Fill the Ask fields on the agreement before saving."
+                isSaving = false
+                editorMounted = true
+                return
+            }
+            let bodyOK = !titleSnapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !normalized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            guard bodyOK else {
+                isSaving = false
+                editorMounted = true
+                return
+            }
+            guard job.contact != nil else {
+                errorMessage = "Link a client on the job before saving a contract."
+                isSaving = false
+                editorMounted = true
+                return
+            }
+
+            let resolved = resolvedHTML()
+            let trimmedTitle = titleSnapshot.trimmingCharacters(in: .whitespacesAndNewlines)
+            let contract: Contract
+            if let existing {
+                contract = existing
+                contract.title = trimmedTitle.isEmpty ? "Agreement" : trimmedTitle
+                contract.html = resolved
+                contract.eventLabel = StudioDay.string(job.eventDate)
+                contract.job = job
+                if contract.status.isEmpty || contract.status == "template" {
+                    contract.status = "draft"
+                }
+            } else {
+                contract = Contract(
+                    title: trimmedTitle.isEmpty ? "Agreement" : trimmedTitle,
+                    status: "draft",
+                    html: resolved,
+                    eventLabel: StudioDay.string(job.eventDate),
+                    isTemplate: false,
+                    job: job
+                )
+                modelContext.insert(contract)
+            }
+
+            ensureSigner(on: contract)
+            do {
+                try modelContext.save()
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isSaving = false
+                editorMounted = true
+            }
         }
     }
 

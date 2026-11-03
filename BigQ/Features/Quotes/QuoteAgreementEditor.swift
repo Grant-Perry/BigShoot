@@ -6,7 +6,19 @@ import SwiftUI
 @MainActor
 final class AgreementEditFlush {
     var run: () -> Void = {}
+    /// Pull HTML from the text view without publishing into the SwiftUI `@Binding`.
+    var pull: () -> String = { "" }
+    /// Plain `NSTextView.string` only — no normalize (Save hot path).
+    var pullRaw: () -> String = { "" }
+    /// Drop `onCommit` immediately so a deferred blur cannot publish mid-Save.
+    var disarm: () -> Void = {}
+    /// Empty text storage + undo before unmount/dismiss.
+    var gut: () -> Void = {}
     func call() { run() }
+    func pullHTML() -> String { pull() }
+    func pullRawPlainText() -> String { pullRaw() }
+    func disarmPublishing() { disarm() }
+    func gutEditor() { gut() }
 }
 
 struct QuoteAgreementEditor: View {
@@ -22,6 +34,8 @@ struct QuoteAgreementEditor: View {
     var mergeSourceLabel: String = "the quote"
     /// Optional pass after Ask answers — job contracts use this to fill client chips in-editor.
     var polishHTML: (String) -> String = { $0 }
+    /// Minimum height for the rich-text + variables pane (default suits dedicated agreement sheets).
+    var minEditorHeight: CGFloat = 280
 
     @State private var session: AgreementEditorSession
     @State private var showAskPrompt = false
@@ -39,7 +53,8 @@ struct QuoteAgreementEditor: View {
         onPreview: (() -> Void)? = nil,
         flush: AgreementEditFlush? = nil,
         mergeSourceLabel: String = "the quote",
-        polishHTML: @escaping (String) -> String = { $0 }
+        polishHTML: @escaping (String) -> String = { $0 },
+        minEditorHeight: CGFloat = 280
     ) {
         _title = title
         _html = html
@@ -50,6 +65,7 @@ struct QuoteAgreementEditor: View {
         self.flush = flush
         self.mergeSourceLabel = mergeSourceLabel
         self.polishHTML = polishHTML
+        self.minEditorHeight = minEditorHeight
         let initial = html.wrappedValue
         _session = State(initialValue: AgreementEditorSession(html: initial))
         _hasBody = State(initialValue: !title.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -77,8 +93,11 @@ struct QuoteAgreementEditor: View {
                 }
                 if hasAskFields {
                     Button("Fill Ask Fields…") {
-                        flushSession()
-                        presentAskInterview(prompts: AgreementAskField.prompts(in: session.html))
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(50))
+                            flushSession()
+                            presentAskInterview(prompts: AgreementAskField.prompts(in: session.html))
+                        }
                     }
                 }
                 if !templates.isEmpty {
@@ -116,7 +135,7 @@ struct QuoteAgreementEditor: View {
                 )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .frame(minHeight: 280)
+            .frame(minHeight: minEditorHeight)
             .studioCard(cornerRadius: 10)
         }
         .onAppear {
@@ -131,6 +150,19 @@ struct QuoteAgreementEditor: View {
             }
             flush?.run = {
                 session.commitFromTextView()
+            }
+            flush?.pull = {
+                session.pullFromTextView()
+                return session.html
+            }
+            flush?.pullRaw = {
+                session.pullRawPlainText()
+            }
+            flush?.disarm = {
+                session.onCommit = nil
+            }
+            flush?.gut = {
+                session.gutForTeardown()
             }
             refreshChromeFlags(from: session.html)
         }
@@ -149,9 +181,15 @@ struct QuoteAgreementEditor: View {
             refreshChromeFlags(from: new)
         }
         .onDisappear {
-            flushSession()
+            // Do not flush here — Save/Preview already pull HTML after a short defer.
+            // Re-committing a wedding agreement while the NSTextView is tearing down
+            // is a reliable beachball (Cancel and post-Save dismiss both hit this).
             session.onCommit = nil
             flush?.run = {}
+            flush?.pull = { "" }
+            flush?.pullRaw = { "" }
+            flush?.disarm = {}
+            flush?.gut = {}
         }
         .sheet(isPresented: $showAskPrompt) {
             AgreementAskPromptSheet { prompt in
@@ -178,14 +216,17 @@ struct QuoteAgreementEditor: View {
     }
 
     private func beginApply(_ template: Contract) {
-        flushSession()
-        let prompts = AgreementAskField.prompts(in: template.html)
-        if prompts.isEmpty {
-            onApplyTemplate(template, [:])
-            refreshChromeFlags(from: html)
-            return
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            flushSession()
+            let prompts = AgreementAskField.prompts(in: template.html)
+            if prompts.isEmpty {
+                onApplyTemplate(template, [:])
+                refreshChromeFlags(from: html)
+                return
+            }
+            presentAskInterview(prompts: prompts, pendingTemplate: template)
         }
-        presentAskInterview(prompts: prompts, pendingTemplate: template)
     }
 
     private func presentAskInterview(prompts: [String], pendingTemplate: Contract? = nil) {

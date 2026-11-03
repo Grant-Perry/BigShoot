@@ -206,7 +206,10 @@ enum AgreementPDFLayout {
 extension ContractDocument {
     /// One line per block tag — single newlines between rows (no blank spacer lines).
     static func plainLines(_ html: String) -> [String] {
-        plain(html).components(separatedBy: "\n").map {
+        // NSTextView.string is already plain — skip the HTML-strip regex gauntlet
+        // (that alone hitchs long wedding agreements on Save flush).
+        let source = html.contains("<") ? plain(html) : html
+        return source.components(separatedBy: "\n").map {
             AgreementFieldTable.cleanLine($0)
         }.filter { !$0.isEmpty }
     }

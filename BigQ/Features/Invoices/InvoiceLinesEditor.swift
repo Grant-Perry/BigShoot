@@ -5,6 +5,8 @@ import SwiftUI
 struct InvoiceLinesEditor: View {
     @Bindable var draft: InvoiceDraftModel
     var catalog: [CatalogItem]
+    /// Cap for the scrollable row list. Quote sheets pass a tighter value so Subtotal/Tax/Total stay on screen.
+    var rowListMaxHeight: CGFloat = ListLayout.maxHeight
 
     @State private var showCatalog = false
     @State private var scrollTarget: UUID?
@@ -14,7 +16,7 @@ struct InvoiceLinesEditor: View {
 
     private var rowViewport: CGFloat {
         let measured = rowsHeight > 0 ? rowsHeight : 72
-        return min(measured, ListLayout.maxHeight)
+        return min(measured, rowListMaxHeight)
     }
 
     var body: some View {
@@ -38,7 +40,7 @@ struct InvoiceLinesEditor: View {
                 .defaultScrollAnchor(.top)
                 .defaultScrollAnchor(.top, for: .sizeChanges)
                 .scrollBounceBehavior(.basedOnSize)
-                .scrollDisabled(rowsHeight <= ListLayout.maxHeight)
+                .scrollDisabled(rowsHeight <= rowListMaxHeight)
                 .frame(height: rowViewport)
                 .onChange(of: scrollTarget) { _, id in
                     guard let id else { return }
