@@ -316,6 +316,8 @@ enum InvoicePDFRenderer {
         context.strokePath()
     }
 
+    private static let textDrawOptions: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+
     private static func paintBlock(
         _ text: String,
         x: CGFloat,
@@ -333,10 +335,16 @@ enum InvoicePDFRenderer {
             .foregroundColor: color,
             .paragraphStyle: style,
         ]
-        let rect = CGRect(x: x, y: pageSize.height - top - height, width: width, height: height)
+        let rect = CGRect(
+            x: x,
+            y: floor(pageSize.height - top - height),
+            width: width,
+            height: ceil(height)
+        )
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-        NSAttributedString(string: text, attributes: attributes).draw(in: rect)
+        NSAttributedString(string: text, attributes: attributes)
+            .draw(with: rect, options: textDrawOptions, context: nil)
         NSGraphicsContext.restoreGraphicsState()
     }
 
@@ -346,8 +354,8 @@ enum InvoicePDFRenderer {
         let bounds = NSAttributedString(
             string: text,
             attributes: [.font: font, .paragraphStyle: style]
-        ).boundingRect(with: CGSize(width: width, height: 80), options: [.usesLineFragmentOrigin, .usesFontLeading])
-        return min(max(ceil(bounds.height), lineBox(font)), 54)
+        ).boundingRect(with: CGSize(width: width, height: 80), options: textDrawOptions)
+        return min(max(ceil(bounds.height) + 2, lineBox(font)), 56)
     }
 
     private static func paint(

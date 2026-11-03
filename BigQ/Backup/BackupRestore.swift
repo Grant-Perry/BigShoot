@@ -358,6 +358,25 @@ enum BackupRestore {
             job.status = record.status
             job.archived = record.archived
             job.contact = record.contactID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
+            job.paymentScheduleModeRaw =
+                record.paymentScheduleMode ?? QuotePaymentScheduleMode.none.rawValue
+            Array(job.paymentTerms).forEach(context.delete)
+            job.paymentTerms.removeAll()
+            for termRecord in record.paymentTerms ?? [] {
+                let term = JobPaymentTerm(
+                    title: termRecord.title,
+                    position: termRecord.position,
+                    amountMode: QuotePaymentAmountMode(rawValue: termRecord.amountMode) ?? .percentOfTotal,
+                    percent: try BackupMoney.decimal(termRecord.percent),
+                    fixedAmount: try BackupMoney.decimal(termRecord.fixedAmount),
+                    dueMode: QuotePaymentDueMode(rawValue: termRecord.dueMode) ?? .signature,
+                    daysBeforeEvent: termRecord.daysBeforeEvent,
+                    fixedDueDate: termRecord.fixedDueDate,
+                    amount: try BackupMoney.decimal(termRecord.amount)
+                )
+                term.job = job
+                context.insert(term)
+            }
             adopt(
                 fileArchiveID: record.archiveID,
                 fileShootQID: record.shootqID,
@@ -624,6 +643,8 @@ enum BackupRestore {
             quote.agreementTitle = record.agreementTitle
             quote.sentAt = record.sentAt
             quote.signedAt = record.signedAt
+            quote.paymentScheduleModeRaw =
+                record.paymentScheduleMode ?? QuotePaymentScheduleMode.none.rawValue
             quote.contact = record.contactID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
             quote.job = record.jobID.flatMap { jobs.existing(archiveID: $0, shootqID: nil) }
             quote.studio = record.studioID.flatMap { studios.existing(archiveID: $0, shootqID: nil) }
@@ -673,6 +694,7 @@ enum BackupRestore {
     ) throws {
         for item in pending {
             Array(item.quote.lines).forEach(context.delete)
+            Array(item.quote.paymentTerms).forEach(context.delete)
             for record in item.record.lines {
                 let line = QuoteLine(
                     name: record.name,
@@ -688,6 +710,21 @@ enum BackupRestore {
                     line.catalogItem = catalog.existing(archiveID: catalogID, shootqID: nil)
                 }
                 context.insert(line)
+            }
+            for record in item.record.paymentTerms ?? [] {
+                let term = QuotePaymentTerm(
+                    title: record.title,
+                    position: record.position,
+                    amountMode: QuotePaymentAmountMode(rawValue: record.amountMode) ?? .percentOfTotal,
+                    percent: try BackupMoney.decimal(record.percent),
+                    fixedAmount: try BackupMoney.decimal(record.fixedAmount),
+                    dueMode: QuotePaymentDueMode(rawValue: record.dueMode) ?? .signature,
+                    daysBeforeEvent: record.daysBeforeEvent,
+                    fixedDueDate: record.fixedDueDate,
+                    amount: try BackupMoney.decimal(record.amount)
+                )
+                term.quote = item.quote
+                context.insert(term)
             }
         }
     }

@@ -10,6 +10,7 @@ struct JobWorkspace: View {
     @Query(sort: \Contact.fullName) private var contacts: [Contact]
     @State private var showEditor = false
     @State private var editingJob: Job?
+    @State private var contractEditor: JobContractLaunch?
 
     private var ordered: [Job] {
         jobs.sorted { lhs, rhs in
@@ -38,7 +39,18 @@ struct JobWorkspace: View {
             Divider()
             Group {
                 if let selected {
-                    JobDetailView(job: selected, onOpenInvoice: onOpenInvoice, onOpenQuote: onOpenQuote)
+                    JobDetailView(
+                        job: selected,
+                        contacts: contacts,
+                        onEdit: { editingJob = selected },
+                        onAddContract: { contractEditor = JobContractLaunch(job: selected) },
+                        onEditContract: { contract in
+                            contractEditor = JobContractLaunch(job: selected, contract: contract)
+                        },
+                        onDeleteContract: deleteContract,
+                        onOpenInvoice: onOpenInvoice,
+                        onOpenQuote: onOpenQuote
+                    )
                 } else {
                     StudioEmptyState(
                         title: "No job selected",
@@ -56,7 +68,22 @@ struct JobWorkspace: View {
         .sheet(item: $editingJob) { job in
             JobEditorSheet(contacts: contacts, job: job)
         }
+        .sheet(item: $contractEditor) { launch in
+            JobContractSheet(job: launch.job, existing: launch.contract)
+        }
     }
+
+    private func deleteContract(_ contract: Contract) {
+        let context = contract.modelContext
+        context?.delete(contract)
+        try? context?.save()
+    }
+}
+
+private struct JobContractLaunch: Identifiable {
+    let id = UUID()
+    var job: Job
+    var contract: Contract?
 }
 
 struct JobListView: View {

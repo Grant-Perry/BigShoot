@@ -36,6 +36,7 @@ struct QuoteWorkspace: View {
     @State private var scope: QuoteScope = .open
     @State private var search = ""
     @State private var previewQuote: Quote?
+    @State private var previewAgreementOnly = false
     @State private var editingQuote: Quote?
     @State private var mailNote: String?
     @State private var convertError: String?
@@ -67,7 +68,14 @@ struct QuoteWorkspace: View {
                 if let selected {
                     QuoteDetailView(
                         quote: selected,
-                        onPreview: { previewQuote = selected },
+                        onPreview: {
+                            previewAgreementOnly = false
+                            previewQuote = selected
+                        },
+                        onPreviewContract: {
+                            previewAgreementOnly = true
+                            previewQuote = selected
+                        },
                         onSend: { send(selected) },
                         onEdit: { editingQuote = selected },
                         onMarkSigned: { beginConvert(selected) },
@@ -92,7 +100,7 @@ struct QuoteWorkspace: View {
             NewQuoteSheet(existing: quote)
         }
         .sheet(item: $previewQuote) { quote in
-            QuotePDFPreviewSheet(quote: quote)
+            QuotePDFPreviewSheet(quote: quote, agreementOnly: previewAgreementOnly)
         }
         .alert("Mail", isPresented: mailPresented) {
             Button("OK", role: .cancel) {}
@@ -200,6 +208,10 @@ struct QuoteWorkspace: View {
     }
 
     private func send(_ quote: Quote) {
+        if AgreementAskField.hasUnresolvedAsks(in: quote.agreementHTML) {
+            mailNote = "Fill the Ask fields on this quote’s agreement before emailing."
+            return
+        }
         if quote.status == .draft {
             do {
                 if quote.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -222,6 +234,10 @@ struct QuoteWorkspace: View {
     }
 
     private func beginConvert(_ quote: Quote) {
+        if AgreementAskField.hasUnresolvedAsks(in: quote.agreementHTML) {
+            convertError = "Fill the Ask fields on this quote’s agreement before converting."
+            return
+        }
         pendingConvert = quote
         evidenceData = nil
     }

@@ -173,8 +173,16 @@ struct NewInvoiceSheet: View {
             draft.applyNetDays()
         }
         .onChange(of: draft.job?.persistentModelID) { _, _ in
+            if let contact = draft.job?.contact {
+                draft.contact = contact
+            }
             draft.applyNetDays()
             draft.fillEmptyNoteFromJob()
+        }
+        .onChange(of: draft.job?.contact?.persistentModelID) { _, _ in
+            if let contact = draft.job?.contact {
+                draft.contact = contact
+            }
         }
         .onChange(of: draft.job?.name) { _, _ in
             draft.fillEmptyNoteFromJob()
@@ -322,6 +330,10 @@ struct NewInvoiceSheet: View {
         }
         bypassPrompt = nil
         draft.job = job
+        // Invoice + agreement client always follow the job’s contact.
+        if let contact = job?.contact {
+            draft.contact = contact
+        }
     }
 
     private func presentJobEditor(_ job: Job?) {

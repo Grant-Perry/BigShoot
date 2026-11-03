@@ -11,12 +11,31 @@ struct NewQuoteSheet: View {
     private var templates: [Contract]
 
     var existing: Quote?
-    @State private var draft = QuoteDraftModel()
+    @State private var draft: QuoteDraftModel
     @State private var errorMessage: String?
     @State private var jobEditor: JobEditorLaunch?
     @State private var contactEditor: ContactEditorMode?
     @State private var previewSession: QuotePreviewSession?
-    @State private var includeValidUntil = false
+    @State private var previewAgreementOnly = false
+    @State private var includeValidUntil: Bool
+    @State private var agreementFlush = AgreementEditFlush()
+    /// Mount the NSTextView after the sheet chrome is on screen — sync load of a
+    /// wedding agreement during presentation beachballs.
+    @State private var mountAgreementEditor = false
+    @State private var allowAgreementAutofill = false
+
+    init(existing: Quote? = nil) {
+        self.existing = existing
+        if let existing {
+            let loaded = QuoteDraftModel()
+            loaded.load(existing)
+            _draft = State(initialValue: loaded)
+            _includeValidUntil = State(initialValue: existing.validUntil != nil)
+        } else {
+            _draft = State(initialValue: QuoteDraftModel())
+            _includeValidUntil = State(initialValue: false)
+        }
+    }
 
     private var jobs: [Job] {
         var list = draft.pricing.contact?.jobs ?? []
@@ -31,43 +50,105 @@ struct NewQuoteSheet: View {
     var body: some View {
         @Bindable var draft = draft
         @Bindable var pricing = draft.pricing
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(editorTitle)
                     .font(StudioDesign.displayTitle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .help("See the quote PDF without saving")
             }
-            clientColumn(pricing: pricing)
-            QuoteAgreementEditor(
-                title: $draft.agreementTitle,
-                html: $draft.agreementHTML,
-                templates: templates,
-                onApplyTemplate: draft.applyTemplate,
-                onClear: draft.clearAgreement
-            )
-            if let errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+            .padding(.bottom, 16)
+
+            // Top form scrolls on its own. Agreement editor stays outside — nesting
+            // NSTextView inside SwiftUI ScrollView beachballs while typing.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    clientColumn(pricing: pricing)
+                    QuotePaymentTermsSection(draft: draft)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: 280)
+
+            Group {
+                if mountAgreementEditor {
+                    QuoteAgreementEditor(
+                        title: $draft.agreementTitle,
+                        html: $draft.agreementHTML,
+                        templates: templates,
+                        onApplyTemplate: { template, answers in
+                            draft.applyTemplate(template, askAnswers: answers)
+                            draft.fillKnownAgreementFields(studio: primaryStudio)
+                        },
+                        onClear: draft.clearAgreement,
+                        onPreview: showContractPreview,
+                        flush: agreementFlush,
+                        polishHTML: { source in
+                            AgreementMerge.resolve(
+                                source,
+                                with: draft.agreementMergeContext(studio: primaryStudio),
+                                skipEmptyValues: true
+                            )
+                        }
+                    )
+                } else {
+                    VStack(spacing: 10) {
+                        ProgressView()
+                        Text("Loading agreement…")
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .studioCard(cornerRadius: 10)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
+            .padding(.top, 12)
+
+            // Don't wrap in another height-capped ScrollView — that clipped Subtotal/Tax/Total.
+            // InvoiceLinesEditor already scrolls its own rows and keeps totals below them.
             InvoiceLinesEditor(draft: pricing, catalog: catalog)
                 .frame(maxWidth: .infinity)
+                .padding(.top, 12)
+
             footer
+                .padding(.top, 16)
         }
         .padding(24)
-        .frame(width: 860)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 980, idealWidth: 1040)
+        .frame(minHeight: 700, idealHeight: 820, maxHeight: 920)
         .studioActive()
         .focusedSceneValue(\.invoiceEditorActive, true)
         .onAppear {
-            if let existing {
-                draft.load(existing)
-                includeValidUntil = existing.validUntil != nil
+            // Let the sheet present first, then mount/parse the agreement off that turn.
+            Task { @MainActor in
+                await Task.yield()
+                mountAgreementEditor = true
+                await Task.yield()
+                allowAgreementAutofill = true
             }
+        }
+        .onChange(of: draft.paymentScheduleMode) { _, _ in
+            guard allowAgreementAutofill else { return }
+            agreementFlush.call()
+            draft.fillKnownAgreementFields(studio: primaryStudio)
+        }
+        .onChange(of: draft.paymentTerms) { _, _ in
+            guard allowAgreementAutofill else { return }
+            agreementFlush.call()
+            draft.fillKnownAgreementFields(studio: primaryStudio)
         }
         .sheet(item: $jobEditor) { launch in
             JobEditorSheet(contacts: contacts, contact: draft.pricing.contact, job: launch.job) { saved in
@@ -82,7 +163,7 @@ struct NewQuoteSheet: View {
             }
         }
         .sheet(item: $previewSession) { session in
-            QuotePDFPreviewSheet(quote: session.quote)
+            QuotePDFPreviewSheet(quote: session.quote, agreementOnly: previewAgreementOnly)
         }
     }
 
@@ -108,13 +189,14 @@ struct NewQuoteSheet: View {
                     jobs: jobs,
                     selection: pricing.job,
                     onAdd: { presentJobEditor(nil) },
-                    onSelect: { pricing.job = $0 },
+                    onSelect: selectJob,
                     onEdit: presentJobEditor
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(alignment: .top, spacing: 20) {
                 DatePicker("Quote date:", selection: $pricing.invoiceDate, displayedComponents: .date)
+                eventDateField(pricing: pricing)
                 Toggle("Valid until", isOn: $includeValidUntil)
                     .toggleStyle(.checkbox)
                     .onChange(of: includeValidUntil) { _, on in
@@ -147,10 +229,69 @@ struct NewQuoteSheet: View {
             }
         }
         .onChange(of: pricing.job?.persistentModelID) { _, _ in
+            syncClientFromJob(pricing)
             pricing.fillEmptyNoteFromJob()
+            adoptAgreementFromSelectedJob()
+            seedPaymentTermsFromJobIfNeeded()
+        }
+        .onChange(of: pricing.job?.contact?.persistentModelID) { _, _ in
+            syncClientFromJob(pricing)
         }
         .onChange(of: pricing.job?.name) { _, _ in
             pricing.fillEmptyNoteFromJob()
+        }
+    }
+
+    /// Agreement client fields always follow the job’s contact.
+    private func selectJob(_ job: Job?) {
+        draft.pricing.job = job
+        syncClientFromJob()
+        adoptAgreementFromSelectedJob()
+        seedPaymentTermsFromJobIfNeeded()
+    }
+
+    private func seedPaymentTermsFromJobIfNeeded() {
+        guard draft.paymentScheduleMode == .none else { return }
+        guard let job = draft.pricing.job else { return }
+        QuotePaymentSchedule.copySchedule(from: job, into: draft)
+    }
+
+    private func syncClientFromJob(_ pricing: InvoiceDraftModel? = nil) {
+        let pricing = pricing ?? draft.pricing
+        guard let contact = pricing.job?.contact else { return }
+        pricing.contact = contact
+    }
+
+    private func adoptAgreementFromSelectedJob() {
+        _ = draft.adoptAgreement(from: draft.pricing.job, studio: primaryStudio)
+    }
+
+    private var primaryStudio: StudioBrand? {
+        existing?.studio ?? (try? StudioBrandDirectory.primary(in: modelContext))
+    }
+
+    /// `[Event Date]`, payment “days before event,” and the agreement all use the job’s date.
+    @ViewBuilder
+    private func eventDateField(pricing: InvoiceDraftModel) -> some View {
+        if pricing.job != nil {
+            DatePicker(
+                "Event date:",
+                selection: Binding(
+                    get: { pricing.job?.eventDate ?? pricing.invoiceDate },
+                    set: { pricing.job?.eventDate = $0 }
+                ),
+                displayedComponents: .date
+            )
+            .help("Stored on the job. Fills [Event Date] and payment dates before the event.")
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Event date:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Select a job")
+                    .foregroundStyle(.secondary)
+                    .help("Event date comes from the job — pick or add one above.")
+            }
         }
     }
 
@@ -182,15 +323,35 @@ struct NewQuoteSheet: View {
     }
 
     private func showPreview() {
-        let studio = existing?.studio ?? (try? StudioBrandDirectory.primary(in: modelContext))
+        openPreview(agreementOnly: false)
+    }
+
+    private func showContractPreview() {
+        openPreview(agreementOnly: true)
+    }
+
+    private func openPreview(agreementOnly: Bool) {
+        agreementFlush.call()
+        if AgreementAskField.hasUnresolvedAsks(in: draft.agreementHTML) {
+            errorMessage = "Fill the Ask fields on the agreement before previewing."
+            return
+        }
+        if agreementOnly,
+           draft.agreementTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           draft.agreementHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Add an agreement before previewing the contract."
+            return
+        }
         do {
-            previewSession = try draft.makePreview(studio: studio)
+            previewAgreementOnly = agreementOnly
+            previewSession = try draft.makePreview(studio: primaryStudio)
         } catch {
             errorMessage = "Couldn’t open the preview."
         }
     }
 
     private func save(markSent: Bool) {
+        agreementFlush.call()
         do {
             _ = try draft.save(in: modelContext, markSent: markSent)
             dismiss()

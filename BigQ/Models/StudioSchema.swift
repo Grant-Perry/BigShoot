@@ -119,6 +119,28 @@ enum StudioSchemaV10: VersionedSchema {
     }
 }
 
+/// Quote payment terms (scheduled + custom schedules).
+enum StudioSchemaV11: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(11, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV10.models + [QuotePaymentTerm.self]
+    }
+}
+
+/// Job-level payment term templates for quotes.
+enum StudioSchemaV12: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(12, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV11.models + [JobPaymentTerm.self]
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

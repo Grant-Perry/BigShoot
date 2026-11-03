@@ -25,6 +25,8 @@ final class Quote {
     var signedAt: Date?
     /// Optional PDF the client returned. Phase 1 evidence only.
     @Attribute(.externalStorage) var signedEvidenceData: Data?
+    /// none | scheduled | custom
+    var paymentScheduleModeRaw: String = QuotePaymentScheduleMode.none.rawValue
     var archiveID: String = ""
 
     var contact: Contact?
@@ -36,6 +38,9 @@ final class Quote {
 
     @Relationship(deleteRule: .cascade, inverse: \QuoteLine.quote)
     var lines: [QuoteLine]
+
+    @Relationship(deleteRule: .cascade, inverse: \QuotePaymentTerm.quote)
+    var paymentTerms: [QuotePaymentTerm]
 
     init(
         number: String = "",
@@ -76,11 +81,17 @@ final class Quote {
         self.sentAt = sentAt
         self.signedAt = signedAt
         self.lines = []
+        self.paymentTerms = []
     }
 
     var status: QuoteStatus {
         get { QuoteStatus(rawValue: statusRaw) ?? .draft }
         set { statusRaw = newValue.rawValue }
+    }
+
+    var paymentScheduleMode: QuotePaymentScheduleMode {
+        get { QuotePaymentScheduleMode(rawValue: paymentScheduleModeRaw) ?? .none }
+        set { paymentScheduleModeRaw = newValue.rawValue }
     }
 
     var displayNumber: String {
@@ -117,5 +128,9 @@ final class Quote {
 
     var sortedLines: [QuoteLine] {
         lines.sorted { $0.position < $1.position }
+    }
+
+    var sortedPaymentTerms: [QuotePaymentTerm] {
+        paymentTerms.sorted { $0.position < $1.position }
     }
 }

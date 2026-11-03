@@ -122,6 +122,8 @@ struct BackupFile: Codable, Sendable, Equatable {
         var status: String
         var archived: Bool
         var contactID: String?
+        var paymentScheduleMode: String?
+        var paymentTerms: [QuotePaymentTerm]?
     }
 
     struct CatalogItem: Codable, Sendable, Equatable {
@@ -226,7 +228,21 @@ struct BackupFile: Codable, Sendable, Equatable {
         var agreementBodyFile: String?
         /// SHA-256 of the returned signed PDF, when present.
         var evidenceFile: String?
+        var paymentScheduleMode: String?
+        var paymentTerms: [QuotePaymentTerm]?
         var lines: [Line]
+    }
+
+    struct QuotePaymentTerm: Codable, Sendable, Equatable {
+        var title: String
+        var position: Int
+        var amountMode: String
+        var percent: String
+        var fixedAmount: String
+        var dueMode: String
+        var daysBeforeEvent: Int
+        var fixedDueDate: Date?
+        var amount: String
     }
 
     struct Contract: Codable, Sendable, Equatable {

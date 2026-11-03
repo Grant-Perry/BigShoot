@@ -23,6 +23,18 @@ enum ContractLinks {
         job.contracts.filter { !$0.isTemplate }.sorted(by: newerFirst)
     }
 
+    /// Best agreement to seed a quote: readable draft first, otherwise the newest on the job.
+    static func preferredAgreement(for job: Job) -> Contract? {
+        let contracts = forJob(job).filter {
+            ContractDocument.hasReadableBody($0.html)
+                || !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if let draft = contracts.first(where: { !$0.isSigned }) {
+            return draft
+        }
+        return contracts.first
+    }
+
     private static func newerFirst(_ lhs: Contract, _ rhs: Contract) -> Bool {
         switch (lhs.sentAt, rhs.sentAt) {
         case let (left?, right?) where left != right:

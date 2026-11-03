@@ -48,6 +48,32 @@ struct BigQTests {
         #expect(receipt.methodTitle == "Bank Transfer")
     }
 
+    @Test func paymentScheduleHalfPercentIncompleteAtZeroTotal() {
+        let terms = [
+            DraftPaymentTerm(amountMode: .percentOfTotal, percent: 50, dueMode: .signature),
+        ]
+        #expect(!QuotePaymentSchedule.isComplete(terms, total: 0))
+        let summary = QuotePaymentSchedule.completenessSummary(terms: terms, total: 0)
+        #expect(summary.text.contains("50%"))
+        #expect(summary.text.contains("50% more"))
+    }
+
+    @Test func paymentScheduleHalfPlusRemainingCompleteAtZeroTotal() {
+        let terms = [
+            DraftPaymentTerm(amountMode: .percentOfTotal, percent: 50, dueMode: .signature),
+            DraftPaymentTerm(amountMode: .remainingBalance, dueMode: .signature),
+        ]
+        #expect(QuotePaymentSchedule.isComplete(terms, total: 0))
+    }
+
+    @Test func paymentScheduleHalfPercentIncompleteWhenTotalHasValue() {
+        var terms = [
+            DraftPaymentTerm(amountMode: .percentOfTotal, percent: 50, dueMode: .signature),
+        ]
+        QuotePaymentSchedule.recalculate(&terms, total: 1000)
+        #expect(!QuotePaymentSchedule.isComplete(terms, total: 1000))
+    }
+
     @Test func jobTypeCatalogRemembersAddedTypes() {
         let defaults = isolatedDefaults("added")
         let catalog = JobTypeCatalog(defaults: defaults)
@@ -213,6 +239,318 @@ struct BigQTests {
         let words = String(rendered.characters)
         #expect(words.contains("ENTIRE AGREEMENT"))
         #expect(words.contains("Hello & welcome"))
+    }
+
+    @Test func agreementPDFLayoutAlignsFieldRowsAndHeadline() {
+        let html = """
+        <div>Wedding Agreement</div>
+        <div>Grant &amp; Deb Photographers, LLC.</div>
+        <p>Client Name: Frank Engel</p>
+        <p>Email: engel@example.com</p>
+        <p>THIS AGREEMENT is binding.</p>
+        """
+        let blocks = AgreementPDFLayout.blocks(
+            mergedHTML: html,
+            agreementTitle: "Wedding Agreement",
+            studioName: "Grant & Deb Photographers, LLC."
+        )
+        #expect(blocks.contains(.centeredHeadline("Wedding Agreement")))
+        #expect(blocks.contains(.centeredSubhead("Grant & Deb Photographers, LLC.")))
+        #expect(blocks.contains(.field(label: "Client Name", value: "Frank Engel")))
+        #expect(blocks.contains(.field(label: "Email", value: "engel@example.com")))
+        #expect(blocks.contains(.paragraph("THIS AGREEMENT is binding.")))
+    }
+
+    @Test func agreementLayoutDoesNotTreatLegalHeadersAsFields() {
+        let html = """
+        <p>Ceremony: James River CC</p>
+        <p>ENTIRE AGREEMENT: This AGREEMENT contains the entire understanding between the parties.</p>
+        <p>COPYRIGHTS:</p>
+        <p>Studio retains copyright in all images.</p>
+        """
+        let blocks = AgreementPDFLayout.blocks(
+            mergedHTML: html,
+            agreementTitle: "Wedding Agreement",
+            studioName: nil
+        )
+        #expect(blocks.contains(.field(label: "Ceremony", value: "James River CC")))
+        #expect(!blocks.contains(where: {
+            if case let .field(label, _) = $0 { return label == "ENTIRE AGREEMENT" }
+            return false
+        }))
+        #expect(blocks.contains(where: {
+            if case let .paragraph(text) = $0 { return text.contains("ENTIRE AGREEMENT") }
+            return false
+        }))
+    }
+
+    @Test func agreementPDFLayoutKeepsPaymentContinuationsOnPayDetails() {
+        let html = """
+        <p>Wedding Date: Oct 3, 2027</p>
+        <p>Pay Details: 50% due at signing</p>
+        <p>25% 90 days prior (7/5/27)</p>
+        <p>Remaining balance 30 days prior (9/3/27)</p>
+        <p>Ceremony: James River CC</p>
+        """
+        let blocks = AgreementPDFLayout.blocks(
+            mergedHTML: html,
+            agreementTitle: "Wedding Agreement",
+            studioName: nil
+        )
+        #expect(blocks.contains(.centeredHeadline("Wedding Agreement")))
+        #expect(blocks.contains(.horizontalRule))
+        #expect(blocks.contains(.field(label: "Wedding Date", value: "Oct 3, 2027")))
+        #expect(
+            blocks.contains(
+                .field(
+                    label: "Pay Details",
+                    value: "50% due at signing\n25% 90 days prior (7/5/27)\nRemaining balance 30 days prior (9/3/27)"
+                )
+            )
+        )
+        #expect(blocks.contains(.field(label: "Ceremony", value: "James River CC")))
+    }
+
+    @Test func agreementPDFLayoutPairsSplitLabelAndValueLines() {
+        // Editor / Cocoa HTML often emits the label and value as separate <p> tags.
+        let html = """
+        <p>Client Name:</p>
+        <p>Frank Engel</p>
+        <p>Pay Details:</p>
+        <p>50% due at signing</p>
+        <p>25% 90 days prior (7/5/27)</p>
+        <p>Ceremony:</p>
+        <p>James River CC</p>
+        <p>Reception:</p>
+        <p>James River CC</p>
+        <p>THIS AGREEMENT is entered into as of today.</p>
+        """
+        let blocks = AgreementPDFLayout.blocks(
+            mergedHTML: html,
+            agreementTitle: "Wedding Agreement",
+            studioName: nil
+        )
+        #expect(blocks.contains(.field(label: "Client Name", value: "Frank Engel")))
+        #expect(
+            blocks.contains(
+                .field(
+                    label: "Pay Details",
+                    value: "50% due at signing\n25% 90 days prior (7/5/27)"
+                )
+            )
+        )
+        #expect(blocks.contains(.field(label: "Ceremony", value: "James River CC")))
+        #expect(blocks.contains(.field(label: "Reception", value: "James River CC")))
+        #expect(blocks.contains(.paragraph("THIS AGREEMENT is entered into as of today.")))
+        #expect(!blocks.contains(where: {
+            if case let .paragraph(text) = $0 { return text.hasPrefix("James River CC THIS") }
+            return false
+        }))
+    }
+
+    @Test func agreementPlainTextDropsCocoaStyleBlocks() {
+        let cocoa = """
+        <!DOCTYPE html><html><head>
+        <style type="text/css">
+        p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 15.0px 'Helvetica Neue'}
+        span.s1 {background-color: #edd18c}
+        </style></head><body>
+        <p class="p1">THIS AGREEMENT is between Grant &amp; Deb and <span class="s1">Frank Engel</span>.</p>
+        </body></html>
+        """
+        let plain = ContractDocument.plain(cocoa)
+        #expect(plain.contains("THIS AGREEMENT is between Grant & Deb and Frank Engel."))
+        #expect(!plain.contains("p.p1"))
+        #expect(!plain.contains("Helvetica Neue"))
+        #expect(!plain.contains("background-color"))
+    }
+
+    @Test func askFieldInterviewCollectsEveryPrompt() {
+        let html = """
+        <p>Bride <span>[Ask: Bride's Name]</span> and groom <span>[Ask: Groom's Name]</span>.</p>
+        <p>Repeat bride <span>[Ask: Bride's Name]</span>.</p>
+        """
+        #expect(AgreementAskField.prompts(in: html) == ["Bride's Name", "Groom's Name"])
+        let filled = AgreementAskField.apply(html, answers: [
+            "Bride's Name": "Sierra",
+            "Groom's Name": "Josh",
+        ])
+        #expect(filled.contains("Sierra"))
+        #expect(filled.contains("Josh"))
+        #expect(!AgreementAskField.hasUnresolvedAsks(in: filled))
+    }
+
+    @Test func agreementClientAlwaysComesFromTheJobContact() {
+        let quoteContact = Contact(
+            firstName: "Other",
+            lastName: "Person",
+            fullName: "Other Person",
+            email: "other@example.com",
+            phone: "555-0000",
+            address: "1 Wrong St"
+        )
+        let jobContact = Contact(
+            firstName: "Frank",
+            lastName: "Engel",
+            fullName: "Frank Engel",
+            email: "engelatnona@aol.com",
+            phone: "555-1212",
+            address: "9 Bride Lane"
+        )
+        let job = Job(name: "Sierra Wedding", jobType: "Wedding", contact: jobContact)
+        let ctx = AgreementMerge.context(contact: quoteContact, job: job, studio: nil)
+        #expect(ctx.clientName == "Frank Engel")
+        #expect(ctx.clientEmail == "engelatnona@aol.com")
+        #expect(ctx.clientPhone == "555-1212")
+        #expect(ctx.clientAddress == "9 Bride Lane")
+        #expect(ctx.primaryContactName == "Frank Engel")
+
+        let resolved = AgreementMerge.resolve(
+            "[Client Name] · [Client Email] · [Client Phone] · [Client Full Address]",
+            with: ctx
+        )
+        #expect(resolved == "Frank Engel · engelatnona@aol.com · 555-1212 · 9 Bride Lane")
+    }
+
+    @Test func selectingAJobAdoptsItsAttachedAgreement() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let contact = Contact(fullName: "Frank Engel", email: "engelatnona@aol.com")
+        let job = Job(name: "Sierra Wedding", contact: contact)
+        let contract = Contract(
+            title: "Wedding Agreement",
+            status: "draft",
+            html: "<p>Hello [Client Name] at [Client Email]</p>",
+            job: job
+        )
+        context.insert(contact)
+        context.insert(job)
+        context.insert(contract)
+        try context.save()
+
+        let draft = QuoteDraftModel()
+        draft.pricing.contact = contact
+        #expect(draft.adoptAgreement(from: job))
+        #expect(draft.agreementTitle == "Wedding Agreement")
+        #expect(draft.agreementHTML.contains("Frank Engel"))
+        #expect(draft.agreementHTML.contains("engelatnona@aol.com"))
+        #expect(!draft.agreementHTML.contains("[Client Name]"))
+    }
+
+    @Test func agreementLiveFillKeepsEmptyClientChips() {
+        let contact = Contact(fullName: "Frank Engel", email: "engelatnona@aol.com")
+        let job = Job(name: "Sierra Wedding", eventDate: Date(timeIntervalSince1970: 1_825_000_000), contact: contact)
+        let ctx = AgreementMerge.context(contact: contact, job: job, studio: nil)
+        let live = AgreementMerge.resolve(
+            "[Client Name] / [Client Email] / [Client Phone] / [Client Full Address] / [Total Amount]",
+            with: ctx,
+            skipEmptyValues: true
+        )
+        #expect(live.contains("Frank Engel"))
+        #expect(live.contains("engelatnona@aol.com"))
+        #expect(live.contains("[Client Phone]"))
+        #expect(live.contains("[Client Full Address]"))
+        #expect(live.contains("[Total Amount]"))
+    }
+
+    @Test func quoteDraftLiveFillResolvesPaymentTerms() {
+        let draft = QuoteDraftModel()
+        draft.pricing.lines = [
+            DraftLine(name: "Wedding", detail: "", quantity: 1, unitPrice: 2000, taxable: false, catalogItem: nil),
+        ]
+        draft.paymentScheduleMode = .custom
+        draft.paymentTerms = [
+            DraftPaymentTerm(amountMode: .percentOfTotal, percent: 50, dueMode: .signature),
+            DraftPaymentTerm(amountMode: .remainingBalance, dueMode: .signature),
+        ]
+        draft.refreshPaymentAmounts()
+        draft.agreementHTML = "Pay: [Terms]"
+        draft.fillKnownAgreementFields()
+        #expect(!draft.agreementHTML.contains("[Terms]"))
+        #expect(draft.agreementHTML.contains("due at signing"))
+        #expect(draft.agreementMergeContext().terms.contains("due at signing"))
+    }
+
+    @Test func jobContractLiveFillResolvesPaymentTerms() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let contact = Contact(fullName: "Frank Engel", email: "engelatnona@aol.com")
+        let job = Job(
+            name: "Sierra Wedding",
+            eventDate: Date(timeIntervalSince1970: 1_825_000_000),
+            contact: contact
+        )
+        job.paymentScheduleMode = .custom
+        context.insert(contact)
+        context.insert(job)
+        JobPaymentSchedule.replaceTerms(
+            on: job,
+            mode: .custom,
+            drafts: [
+                DraftPaymentTerm(amountMode: .percentOfTotal, percent: 50, dueMode: .signature),
+                DraftPaymentTerm(
+                    amountMode: .percentOfTotal,
+                    percent: 25,
+                    dueMode: .daysBeforeEvent,
+                    daysBeforeEvent: 90
+                ),
+                DraftPaymentTerm(
+                    amountMode: .remainingBalance,
+                    dueMode: .daysBeforeEvent,
+                    daysBeforeEvent: 30
+                ),
+            ],
+            in: context
+        )
+        try context.save()
+
+        let ctx = AgreementMerge.context(contact: contact, job: job, studio: nil)
+        #expect(ctx.terms.contains("50% due at signing"))
+        #expect(ctx.terms.contains("25% 90 days prior"))
+        #expect(ctx.terms.contains("Remaining balance 30 days prior"))
+        #expect(!ctx.terms.contains("on or before"))
+        #expect(ctx.terms.contains("&#8232;") || ctx.terms.contains("\u{2028}"))
+
+        let live = AgreementMerge.resolve("Pay Details: [Terms]", with: ctx, skipEmptyValues: true)
+        #expect(!live.contains("[Terms]"))
+        #expect(live.contains("50% due at signing"))
+        #expect(live.contains("25% 90 days prior"))
+    }
+
+    @Test func agreementFieldTableKeepsValueOnSameLineAsLabel() {
+        let html = """
+        <p>Wedding Agreement</p>
+        <p>Client Name: Frank Engel</p>
+        <p>Pay Details: 50% due at signing</p>
+        <p>25% 90 days prior (7/5/27)</p>
+        <p>Remaining balance 30 days prior (9/3/27)</p>
+        <p>Ceremony: James River CC</p>
+        """
+        let attributed = AgreementFieldTable.attributedDocument(
+            from: html,
+            agreementTitle: "Wedding Agreement"
+        )
+        let text = attributed.string
+        // Label and first value share a paragraph (tab-separated), not stacked lines.
+        #expect(text.contains("Client Name:"))
+        #expect(text.contains("Frank Engel"))
+        #expect(text.contains("Pay Details:"))
+        #expect(text.contains("50% due at signing"))
+        #expect(text.contains("25% 90 days prior"))
+        #expect(text.contains("Ceremony:"))
+
+        // Same paragraph: "Client Name:" and "Frank Engel" with no newline between.
+        if let clientRange = text.range(of: "Client Name:"),
+           let valueRange = text.range(of: "Frank Engel") {
+            let between = text[clientRange.upperBound..<valueRange.lowerBound]
+            #expect(!between.contains("\n"))
+        }
+        // Pay Details first value stays on the label line.
+        if let payRange = text.range(of: "Pay Details:"),
+           let firstTerm = text.range(of: "50% due at signing") {
+            let between = text[payRange.upperBound..<firstTerm.lowerBound]
+            #expect(!between.contains("\n"))
+        }
     }
 
     @Test func storedAgreementKeepsItsClauses() throws {
@@ -1509,3 +1847,5 @@ struct StudioLogoProcessorTests {
 private enum StudioLogoSampleError: Error {
     case unreadable
 }
+
+    // DEBUG temporary

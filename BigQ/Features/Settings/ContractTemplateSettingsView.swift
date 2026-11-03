@@ -5,115 +5,124 @@ struct ContractTemplateSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<Contract> { $0.isTemplate }, sort: \Contract.title)
     private var templates: [Contract]
-    @State private var editing: Contract?
-    @State private var showNew = false
+    @State private var selection: PersistentIdentifier?
+    @State private var lockedSelection: PersistentIdentifier?
+    @State private var saveFlash = false
+
+    private var editing: Contract? {
+        let id = selection ?? lockedSelection
+        guard let id else { return nil }
+        return templates.first { $0.persistentModelID == id }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Agreement Templates")
-                        .font(.headline)
-                    Spacer()
-                    Button("New", systemImage: "plus") { showNew = true }
-                }
-                .padding(16)
-                List(templates, selection: Binding(
-                    get: { editing?.persistentModelID },
-                    set: { id in editing = templates.first { $0.persistentModelID == id } }
-                )) { template in
-                    Text(template.displayTitle)
-                        .tag(template.persistentModelID)
-                }
-                .listStyle(.sidebar)
-            }
-            .frame(width: 260)
+            templateList
+                .frame(width: 240)
             Divider()
             if let editing {
-                ContractTemplateEditor(contract: editing, onDelete: {
-                    modelContext.delete(editing)
-                    try? modelContext.save()
-                    self.editing = nil
-                })
+                AgreementTemplateEditorPane(
+                    contract: editing,
+                    saveFlash: saveFlash,
+                    onDelete: { delete(editing) },
+                    onSave: { html in persist(editing, html: html) }
+                )
+                .id(editing.persistentModelID)
             } else {
                 StudioEmptyState(
                     title: "No template selected",
-                    message: "Write reusable agreements to attach when you build a quote.",
+                    message: "Build an agreement with fields for client, job, studio, and quote details.",
                     symbol: "signature"
                 )
             }
         }
-        .sheet(isPresented: $showNew) {
-            NewContractTemplateSheet { created in
-                editing = created
+        .onAppear {
+            if selection == nil {
+                selection = templates.first?.persistentModelID
+                lockedSelection = selection
             }
         }
+        .onChange(of: selection) { _, new in
+            if let new {
+                lockedSelection = new
+            } else if let lockedSelection, templates.contains(where: { $0.persistentModelID == lockedSelection }) {
+                // List sometimes clears selection when SwiftData refreshes — put it back.
+                selection = lockedSelection
+            }
+        }
+        .onChange(of: templateIDs) { _, ids in
+            if let locked = lockedSelection, ids.contains(locked) {
+                if selection != locked { selection = locked }
+                return
+            }
+            selection = ids.first
+            lockedSelection = selection
+        }
     }
-}
 
-private struct NewContractTemplateSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    var onCreated: (Contract) -> Void
-    @State private var title = ""
-    @State private var html = ""
+    private var templateIDs: [PersistentIdentifier] {
+        templates.map(\.persistentModelID)
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("New agreement template")
-                .font(StudioDesign.displayTitle)
-            TextField("Title", text: $title)
-            TextEditor(text: $html)
-                .font(.body)
-                .frame(minHeight: 220)
+    private var templateList: some View {
+        VStack(spacing: 0) {
             HStack {
+                Text("Agreement Templates")
+                    .font(.headline)
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Save") { save() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .keyboardShortcut(.defaultAction)
+                Button("New", systemImage: "plus", action: createTemplate)
+                    .help("New agreement template")
             }
+            .padding(16)
+            List(templates, selection: $selection) { template in
+                Text(template.displayTitle)
+                    .tag(template.persistentModelID)
+            }
+            .listStyle(.sidebar)
         }
-        .padding(24)
-        .frame(width: 560)
     }
 
-    private func save() {
+    private func createTemplate() {
         let contract = Contract(
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            title: "Untitled agreement",
             status: "template",
-            html: html,
+            html: starterBody,
             isTemplate: true
         )
         modelContext.insert(contract)
         try? modelContext.save()
-        onCreated(contract)
-        dismiss()
+        selection = contract.persistentModelID
+        lockedSelection = selection
     }
-}
 
-private struct ContractTemplateEditor: View {
-    @Bindable var contract: Contract
-    var onDelete: () -> Void
-    @Environment(\.modelContext) private var modelContext
+    private func delete(_ contract: Contract) {
+        modelContext.delete(contract)
+        try? modelContext.save()
+        selection = templates.first?.persistentModelID
+        lockedSelection = selection
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TextField("Title", text: $contract.title)
-                .font(StudioDesign.displayTitle)
-            TextEditor(text: $contract.html)
-                .font(.body)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            HStack {
-                Button("Delete Template", role: .destructive, action: onDelete)
-                Spacer()
-                Button("Save") {
-                    try? modelContext.save()
-                }
-                .buttonStyle(.borderedProminent)
-            }
+    private func persist(_ contract: Contract, html: String) {
+        contract.html = html
+        try? modelContext.save()
+        saveFlash = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            saveFlash = false
         }
-        .padding(24)
+    }
+
+    private var starterBody: String {
+        """
+        <p>This agreement is between <span style="background-color:#b8e0f5;">[Studio Name]</span> and <span style="background-color:#b8e0f5;">[Client Name]</span>.</p>
+        <p>Event date: <span style="background-color:#b8e0f5;">[Event Date]</span></p>
+        <p>Job: <span style="background-color:#b8e0f5;">[Job Name]</span></p>
+        <ol>
+        <li><b>Agreement</b> — The studio agrees to provide photography services for the client.</li>
+        <li><b>Services</b> — <span style="background-color:#b8e0f5;">[Quote Details]</span></li>
+        <li><b>Payment</b> — Subtotal: <span style="background-color:#b8e0f5;">[Subtotal]</span>. Total due (incl. tax): <span style="background-color:#b8e0f5;">[Total Amount]</span>. Schedule: <span style="background-color:#b8e0f5;">[Terms]</span>.</li>
+        <li><b>Cancellation</b> — Terms for ending this agreement.</li>
+        </ol>
+        """
     }
 }

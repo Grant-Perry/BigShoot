@@ -6,6 +6,8 @@ struct ContactPickerField: View {
     let contacts: [Contact]
     @Binding var selection: Contact?
     var label = "Client"
+    /// When false, only the chooser control is shown (parent supplies the `Client:` label).
+    var showsLabel = true
     var onAdd: () -> Void = {}
 
     @State private var isOpen = false
@@ -14,25 +16,19 @@ struct ContactPickerField: View {
         selection?.displayName ?? "Choose a client"
     }
 
+    private var fieldLabel: String {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Client:" }
+        return trimmed.hasSuffix(":") ? trimmed : trimmed + ":"
+    }
+
     var body: some View {
-        LabeledContent(label) {
-            Button {
-                isOpen = true
-            } label: {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .lineLimit(1)
-                        .foregroundStyle(selection == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
+        Group {
+            if showsLabel {
+                LabeledContent(fieldLabel) { chooser }
+            } else {
+                chooser
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel(label)
-            .accessibilityValue(title)
         }
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             ContactPickerList(
@@ -45,6 +41,26 @@ struct ContactPickerField: View {
                 }
             )
         }
+    }
+
+    private var chooser: some View {
+        Button {
+            isOpen = true
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
+                    .lineLimit(1)
+                    .foregroundStyle(selection == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel(fieldLabel)
+        .accessibilityValue(title)
     }
 }
 

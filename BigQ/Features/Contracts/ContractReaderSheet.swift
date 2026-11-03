@@ -4,7 +4,8 @@ import SwiftUI
 struct ContractReaderSheet: View {
     @Environment(\.dismiss) private var dismiss
     var contract: Contract
-    @State private var agreement: AttributedString?
+    /// When set, shows Edit so a draft can jump straight into the composer.
+    var onEdit: (() -> Void)?
 
     private var hasBody: Bool {
         ContractDocument.hasReadableBody(contract.html)
@@ -22,6 +23,15 @@ struct ContractReaderSheet: View {
                     }
                 }
                 Spacer()
+                if let onEdit {
+                    Button("Edit", systemImage: "pencil") {
+                        dismiss()
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(50))
+                            onEdit()
+                        }
+                    }
+                }
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
@@ -37,31 +47,31 @@ struct ContractReaderSheet: View {
         }
         .padding(24)
         .frame(minWidth: 760, minHeight: hasBody ? 680 : nil)
-        .task(id: contract.persistentModelID) {
-            guard hasBody else { return }
-            agreement = ContractDocument.rendered(contract.html)
-        }
     }
 
     @ViewBuilder
     private var document: some View {
-        if let agreement {
+        if hasBody {
             ScrollView {
-                Text(agreement)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(28)
+                AgreementDocumentView(
+                    html: contract.html,
+                    agreementTitle: contract.displayTitle,
+                    studioName: contract.job?.contact == nil
+                        ? nil
+                        : studioNameHint
+                )
+                .padding(28)
             }
             .background(Color.white, in: RoundedRectangle(cornerRadius: StudioDesign.Radius.row, style: .continuous))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if hasBody {
-            ProgressView("Opening the agreement")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Text("ShootQ stored this contract without the agreement text. The signature record above is what was exported.")
                 .foregroundStyle(.secondary)
         }
     }
+
+    /// Prefer an explicit studio line from the HTML; layout also detects photographer lines.
+    private var studioNameHint: String? { nil }
 
     private var contextLine: String {
         [contract.job?.displayName, contract.eventLabel, contract.sentAt.map { "Sent \(StudioDay.string($0))" }]

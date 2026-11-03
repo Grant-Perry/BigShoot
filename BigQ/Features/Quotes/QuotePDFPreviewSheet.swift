@@ -7,15 +7,35 @@ struct QuotePDFPreviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     var quote: Quote
     var note: String?
+    /// When true, only the merged agreement pages — no quote pricing sheet.
+    var agreementOnly = false
 
     @State private var shareError: String?
 
-    private var data: Data { QuotePDFRenderer.render(quote) }
+    private var data: Data {
+        agreementOnly
+            ? QuotePDFRenderer.renderAgreementOnly(quote)
+            : QuotePDFRenderer.render(quote)
+    }
+
+    private var heading: String {
+        if agreementOnly {
+            let title = quote.agreementTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            return title.isEmpty ? "Agreement" : title
+        }
+        return quote.displayNumber
+    }
+
+    private var emptyMessage: String {
+        agreementOnly
+            ? "Add agreement text, then preview again."
+            : "Try the quote again."
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(quote.displayNumber)
+                Text(heading)
                     .font(StudioDesign.displayTitle)
                 Spacer()
                 Button("Save PDF…", action: save)
@@ -30,11 +50,15 @@ struct QuotePDFPreviewSheet: View {
                 Text(shareError)
                     .foregroundStyle(.red)
             }
-            if let document = PDFDocument(data: data) {
+            if !data.isEmpty, let document = PDFDocument(data: data) {
                 InvoicePDFView(document: document)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                StudioEmptyState(title: "Couldn’t draw the PDF", message: "Try the quote again.", symbol: "doc.plaintext")
+                StudioEmptyState(
+                    title: "Couldn’t draw the PDF",
+                    message: emptyMessage,
+                    symbol: "doc.plaintext"
+                )
             }
         }
         .padding(20)
@@ -45,7 +69,8 @@ struct QuotePDFPreviewSheet: View {
     private func save() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = "Quote-\(quote.displayNumber).pdf"
+        let stub = agreementOnly ? "Agreement" : "Quote"
+        panel.nameFieldStringValue = "\(stub)-\(quote.displayNumber).pdf"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try data.write(to: url, options: .atomic)

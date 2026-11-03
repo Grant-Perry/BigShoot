@@ -138,7 +138,7 @@ private struct CatalogEditor: View {
     }
 }
 
-private struct CatalogItemSheet: View {
+struct CatalogItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     var item: CatalogItem?

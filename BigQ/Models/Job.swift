@@ -13,6 +13,7 @@ final class Job {
     var archived: Bool
     /// Stable id written into a backup. Empty until the first backup stamps it.
     var archiveID: String = ""
+    var paymentScheduleModeRaw: String = QuotePaymentScheduleMode.none.rawValue
 
     var contact: Contact?
 
@@ -24,6 +25,9 @@ final class Job {
 
     @Relationship(deleteRule: .nullify, inverse: \Contract.job)
     var contracts: [Contract]
+
+    @Relationship(deleteRule: .cascade, inverse: \JobPaymentTerm.job)
+    var paymentTerms: [JobPaymentTerm]
 
     init(
         shootqID: String? = nil,
@@ -44,6 +48,16 @@ final class Job {
         self.invoices = []
         self.quotes = []
         self.contracts = []
+        self.paymentTerms = []
+    }
+
+    var paymentScheduleMode: QuotePaymentScheduleMode {
+        get { QuotePaymentScheduleMode(rawValue: paymentScheduleModeRaw) ?? .none }
+        set { paymentScheduleModeRaw = newValue.rawValue }
+    }
+
+    var sortedPaymentTerms: [JobPaymentTerm] {
+        paymentTerms.sorted { $0.position < $1.position }
     }
 
     var displayName: String {

@@ -27,7 +27,18 @@ enum ContractDocument {
     }
 
     static func plain(_ html: String) -> String {
-        var text = html
+        var text = bodyContent(html)
+        // Cocoa HTML Writer stores styles in <head>. Drop those blocks or the CSS becomes "words".
+        text = text.replacingOccurrences(
+            of: #"(?is)<style\b[^>]*>.*?</style>"#,
+            with: " ",
+            options: .regularExpression
+        )
+        text = text.replacingOccurrences(
+            of: #"(?is)<script\b[^>]*>.*?</script>"#,
+            with: " ",
+            options: .regularExpression
+        )
         let breaks = ["</p>", "</div>", "</li>", "</h1>", "</h2>", "</h3>", "<br>", "<br/>", "<br />"]
         for tag in breaks {
             text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
@@ -48,7 +59,21 @@ enum ContractDocument {
             line.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespaces)
         }
-        return lines.filter { !$0.isEmpty }.joined(separator: "\n\n")
+        return lines.filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    /// Prefer the `<body>` when AppKit saved a full HTML document; otherwise use the fragment.
+    private static func bodyContent(_ html: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"(?is)<body\b[^>]*>(.*?)</body>"#
+        ) else { return html }
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        guard let match = regex.firstMatch(in: html, range: range),
+              match.numberOfRanges > 1,
+              let bodyRange = Range(match.range(at: 1), in: html) else {
+            return html
+        }
+        return String(html[bodyRange])
     }
 
     private static func wrapped(_ body: String) -> String {

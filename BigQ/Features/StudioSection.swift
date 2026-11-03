@@ -43,6 +43,7 @@ enum StudioSection: String, CaseIterable, Identifiable, Hashable {
 extension Notification.Name {
     static let bigShootNewInvoice = Notification.Name("BigQ.NewInvoice")
     static let bigQNewQuote = Notification.Name("BigQ.NewQuote")
+    static let bigQNewItem = Notification.Name("BigQ.NewItem")
     static let bigShootImport = Notification.Name("BigQ.Import")
     static let bigShootExport = Notification.Name("BigQ.Export")
     static let bigQAddCatalogItem = Notification.Name("BigQ.AddCatalogItem")

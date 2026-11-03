@@ -119,7 +119,21 @@ enum BackupExport {
             jobType: job.jobType,
             status: job.status,
             archived: job.archived,
-            contactID: link(job.contact?.archiveID)
+            contactID: link(job.contact?.archiveID),
+            paymentScheduleMode: job.paymentScheduleModeRaw,
+            paymentTerms: job.sortedPaymentTerms.map { term in
+                BackupFile.QuotePaymentTerm(
+                    title: term.title,
+                    position: term.position,
+                    amountMode: term.amountModeRaw,
+                    percent: BackupMoney.text(term.percent),
+                    fixedAmount: BackupMoney.text(term.fixedAmount),
+                    dueMode: term.dueModeRaw,
+                    daysBeforeEvent: term.daysBeforeEvent,
+                    fixedDueDate: term.fixedDueDate,
+                    amount: BackupMoney.text(term.amount)
+                )
+            }
         )
     }
 
@@ -248,6 +262,20 @@ enum BackupExport {
             invoiceID: link(quote.convertedInvoice?.archiveID),
             agreementBodyFile: agreementHash,
             evidenceFile: file(for: quote.signedEvidenceData, media: &media),
+            paymentScheduleMode: quote.paymentScheduleModeRaw,
+            paymentTerms: quote.sortedPaymentTerms.map { term in
+                BackupFile.QuotePaymentTerm(
+                    title: term.title,
+                    position: term.position,
+                    amountMode: term.amountModeRaw,
+                    percent: BackupMoney.text(term.percent),
+                    fixedAmount: BackupMoney.text(term.fixedAmount),
+                    dueMode: term.dueModeRaw,
+                    daysBeforeEvent: term.daysBeforeEvent,
+                    fixedDueDate: term.fixedDueDate,
+                    amount: BackupMoney.text(term.amount)
+                )
+            },
             lines: quote.sortedLines.map { line in
                 BackupFile.Line(
                     shootqID: nil,

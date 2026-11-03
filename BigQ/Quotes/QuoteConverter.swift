@@ -75,8 +75,18 @@ enum QuoteConverter {
         quote.status = .signed
         quote.signedAt = date
         quote.convertedInvoice = invoice
+        copyPaymentSchedule(from: quote, to: invoice, signedAt: date, in: context)
 
         if quote.hasAgreement {
+            quote.agreementHTML = AgreementMerge.resolve(
+                quote.agreementHTML,
+                with: AgreementMerge.context(
+                    contact: quote.job?.contact ?? quote.contact,
+                    job: quote.job,
+                    studio: quote.studio,
+                    quote: quote
+                )
+            )
             attachSignedContract(from: quote, in: context, at: date)
         }
 
@@ -94,7 +104,51 @@ enum QuoteConverter {
             ?? date
     }
 
+    private static func copyPaymentSchedule(
+        from quote: Quote,
+        to invoice: Invoice,
+        signedAt: Date,
+        in context: ModelContext
+    ) {
+        guard quote.paymentScheduleMode != .none else { return }
+        let drafts: [DraftPaymentTerm] = quote.sortedPaymentTerms.map { term in
+            DraftPaymentTerm(
+                title: term.title,
+                amountMode: term.amountMode,
+                percent: term.percent,
+                fixedAmount: term.fixedAmount,
+                dueMode: term.dueMode,
+                daysBeforeEvent: term.daysBeforeEvent,
+                fixedDueDate: term.fixedDueDate ?? signedAt,
+                amount: term.amount
+            )
+        }
+        var recalculated = drafts
+        QuotePaymentSchedule.recalculate(&recalculated, total: invoice.total)
+        for (index, term) in recalculated.enumerated() {
+            let due = QuotePaymentSchedule.resolveDue(
+                term,
+                signatureDate: signedAt,
+                eventDate: quote.job?.eventDate,
+                fallback: signedAt
+            )
+            let entry = PaymentScheduleEntry(
+                due: due,
+                amount: term.amount,
+                amountPaid: 0,
+                balance: term.amount,
+                status: term.title.isEmpty ? "Payment \(index + 1)" : term.title
+            )
+            entry.invoice = invoice
+            context.insert(entry)
+        }
+        if let lastDue = invoice.schedule.compactMap(\.due).max() {
+            invoice.dueDate = lastDue
+        }
+    }
+
     private static func attachSignedContract(from quote: Quote, in context: ModelContext, at date: Date) {
+        let client = quote.job?.contact ?? quote.contact
         let contract = Contract(
             title: quote.agreementTitle.isEmpty ? "Agreement" : quote.agreementTitle,
             status: "signed",
@@ -106,10 +160,10 @@ enum QuoteConverter {
         )
         context.insert(contract)
         let signer = ContractSignature(
-            displayName: quote.clientName,
+            displayName: client?.displayName ?? quote.clientName,
             completed: true,
             signedAt: date,
-            contact: quote.contact
+            contact: client
         )
         signer.contract = contract
         context.insert(signer)

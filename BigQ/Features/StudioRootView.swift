@@ -8,11 +8,17 @@ struct StudioRootView: View {
     @State private var jobID: PersistentIdentifier?
     @State private var invoiceID: PersistentIdentifier?
     @State private var quoteID: PersistentIdentifier?
+    @State private var showNewItemChooser = false
+    @State private var pendingNewItem: NewStudioItem?
     @State private var showNewInvoice = false
     @State private var showNewQuote = false
+    @State private var showNewJob = false
+    @State private var showNewContact = false
+    @State private var showNewCatalogItem = false
     @State private var exportError: String?
     @State private var importModel = ShootQImportModel()
     @Query(sort: \StudioBrand.name) private var studios: [StudioBrand]
+    @Query(sort: \Contact.fullName) private var contacts: [Contact]
     @AppStorage(StudioBanner.key) private var bannerText = StudioBanner.fallback
 
     private var primaryStudioName: String {
@@ -34,11 +40,26 @@ struct StudioRootView: View {
             StudioAppFooterView()
         }
         .frame(minWidth: 1100, minHeight: 720)
+        .sheet(isPresented: $showNewItemChooser, onDismiss: presentPendingNewItem) {
+            NewItemChooserSheet { item in
+                pendingNewItem = item
+                showNewItemChooser = false
+            }
+        }
         .sheet(isPresented: $showNewInvoice) {
             NewInvoiceSheet(onOpenInvoice: openInvoice)
         }
         .sheet(isPresented: $showNewQuote) {
             NewQuoteSheet()
+        }
+        .sheet(isPresented: $showNewJob) {
+            JobEditorSheet(contacts: contacts)
+        }
+        .sheet(isPresented: $showNewContact) {
+            ContactEditorSheet(mode: .new)
+        }
+        .sheet(isPresented: $showNewCatalogItem) {
+            CatalogItemSheet()
         }
         .sheet(isPresented: $importModel.isPresentingOffer) {
             ImportOfferSheet(model: importModel)
@@ -58,6 +79,9 @@ struct StudioRootView: View {
             importModel.offerIfNeeded()
             await ShootQImporter(context: modelContext) { _, _ in }.importContractsIfNeeded()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .bigQNewItem)) { _ in
+            showNewItemChooser = true
+        }
         .onReceive(NotificationCenter.default.publisher(for: .bigShootNewInvoice)) { _ in
             showNewInvoice = true
         }
@@ -69,6 +93,28 @@ struct StudioRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .bigShootExport)) { _ in
             exportBooks()
+        }
+    }
+
+    private func presentPendingNewItem() {
+        guard let item = pendingNewItem else { return }
+        pendingNewItem = nil
+        switch item {
+        case .quote:
+            section = .quotes
+            showNewQuote = true
+        case .invoice:
+            section = .invoices
+            showNewInvoice = true
+        case .job:
+            section = .jobs
+            showNewJob = true
+        case .contact:
+            section = .contacts
+            showNewContact = true
+        case .catalogItem:
+            section = .catalog
+            showNewCatalogItem = true
         }
     }
 
