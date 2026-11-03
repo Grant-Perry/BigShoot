@@ -39,10 +39,18 @@ enum ContractDocument {
             with: " ",
             options: .regularExpression
         )
+        // Keep user bold / italic / underline as markers before generic tag stripping.
+        text = AgreementInlineStyle.markersFromHTMLTags(text)
         let breaks = ["</p>", "</div>", "</li>", "</h1>", "</h2>", "</h3>", "<br>", "<br/>", "<br />"]
         for tag in breaks {
             text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
         }
+        // Inline tags sit mid-sentence; a space here would detach trailing punctuation.
+        text = text.replacingOccurrences(
+            of: #"(?i)</?(span|a|font|small|big|sub|sup|mark)(\s[^>]*)?>"#,
+            with: "",
+            options: .regularExpression
+        )
         text = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
         let entities = [
             "&nbsp;": " ",

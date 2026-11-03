@@ -31,10 +31,10 @@ struct JobContractSheet: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                // Always enabled: html lags typing; showPreview flushes and checks.
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(!hasBody)
                     .help("Preview with the job’s client filled in")
             }
             .padding(.bottom, 16)
@@ -117,6 +117,8 @@ struct JobContractSheet: View {
                 Button("Fill Client Fields") {
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(50))
+                        // Pull editor text first so unsaved typing isn't reloaded away.
+                        agreementFlush.call()
                         html = fillKnownFields(html)
                     }
                 }
@@ -147,7 +149,8 @@ struct JobContractSheet: View {
                 .focusable(false)
             Button("Save Draft") { save() }
                 .buttonStyle(.borderedProminent)
-                .disabled(!hasBody || isSaving)
+                // Not gated on hasBody — html lags typing. save() checks the pulled text.
+                .disabled(isSaving)
                 .keyboardShortcut(.defaultAction)
                 .focusable(false)
         }
@@ -239,6 +242,7 @@ struct JobContractSheet: View {
             let bodyOK = !titleSnapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !normalized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             guard bodyOK else {
+                errorMessage = "Add an agreement before saving."
                 isSaving = false
                 editorMounted = true
                 return

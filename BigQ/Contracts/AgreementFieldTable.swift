@@ -40,7 +40,7 @@ enum AgreementFieldTable {
                     color: ink
                 )
                 appendHeadline(
-                    displayHeadline(line, title: title),
+                    displayHeadline(AgreementInlineStyle.stripped(line), title: title),
                     into: result,
                     font: AgreementRichTextEditing.bodyFont(size: max(fontSize + 3, 18), weight: .bold),
                     color: ink
@@ -141,7 +141,7 @@ enum AgreementFieldTable {
         while index < lines.count {
             let line = cleanLine(lines[index])
             if !placedRule, isHeadline(line, title: title) {
-                parts.append("<p style=\"text-align:center;font-weight:700;\">\(escape(displayHeadline(line, title: title)))</p>")
+                parts.append("<p style=\"text-align:center;font-weight:700;\">\(escape(displayHeadline(AgreementInlineStyle.stripped(line), title: title)))</p>")
                 parts.append("<hr>")
                 placedRule = true
                 index += 1
@@ -156,25 +156,23 @@ enum AgreementFieldTable {
                 // `Address:` with no value, followed by another field (`Email: …`), parses as a
                 // field but takeField rejects it. Without this, index never advances → infinite loop.
                 if rows.isEmpty {
-                    parts.append("<p>\(escape(line))</p>")
+                    parts.append("<p>\(styledEscape(line))</p>")
                     index += 1
                     continue
                 }
                 for row in rows {
-                    let valueLines = row.value
-                        .replacingOccurrences(of: "\u{2028}", with: "\n")
-                        .components(separatedBy: "\n")
-                        .map { $0.trimmingCharacters(in: .whitespaces) }
-                        .filter { !$0.isEmpty }
+                    let valueLines = AgreementInlineStyle.lines(row.value)
+                        .map { AgreementInlineStyle.trimmed($0) }
+                        .filter { !AgreementInlineStyle.stripped($0).isEmpty }
                     let first = valueLines.first ?? ""
-                    parts.append("<p>\(escape(row.label)): \(escape(first))</p>")
+                    parts.append("<p>\(escape(row.label)): \(styledEscape(first))</p>")
                     for cont in valueLines.dropFirst() {
-                        parts.append("<p>\(escape(cont))</p>")
+                        parts.append("<p>\(styledEscape(cont))</p>")
                     }
                 }
                 continue
             }
-            parts.append("<p>\(escape(line))</p>")
+            parts.append("<p>\(styledEscape(line))</p>")
             index += 1
         }
         return parts.joined(separator: "\n")
@@ -230,12 +228,9 @@ enum AgreementFieldTable {
         contStyle.paragraphSpacing = 2
 
         for row in rows {
-            let valueLines = row.value
-                .replacingOccurrences(of: "\u{2028}", with: "\n")
-                .replacingOccurrences(of: "\r\n", with: "\n")
-                .components(separatedBy: "\n")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
+            let valueLines = AgreementInlineStyle.lines(row.value)
+                .map { AgreementInlineStyle.trimmed($0) }
+                .filter { !AgreementInlineStyle.stripped($0).isEmpty }
 
             let first = valueLines.first ?? ""
             let line = NSMutableAttributedString()
@@ -249,14 +244,14 @@ enum AgreementFieldTable {
             line.append(NSAttributedString(string: "\t", attributes: [
                 .font: valueFont, .foregroundColor: color, .paragraphStyle: rowStyle,
             ]))
-            line.append(NSAttributedString(string: first + "\n", attributes: [
-                .font: valueFont, .foregroundColor: color, .paragraphStyle: rowStyle,
+            line.append(AgreementInlineStyle.attributed(first + "\n", font: valueFont, attributes: [
+                .foregroundColor: color, .paragraphStyle: rowStyle,
             ]))
             result.append(line)
 
             for cont in valueLines.dropFirst() {
-                result.append(NSAttributedString(string: cont + "\n", attributes: [
-                    .font: valueFont, .foregroundColor: color, .paragraphStyle: contStyle,
+                result.append(AgreementInlineStyle.attributed(cont + "\n", font: valueFont, attributes: [
+                    .foregroundColor: color, .paragraphStyle: contStyle,
                 ]))
             }
         }
@@ -309,8 +304,8 @@ enum AgreementFieldTable {
         let style = NSMutableParagraphStyle()
         style.alignment = .center
         style.paragraphSpacing = 6
-        result.append(NSAttributedString(string: text + "\n", attributes: [
-            .font: font, .foregroundColor: color, .paragraphStyle: style,
+        result.append(AgreementInlineStyle.attributed(text + "\n", font: font, attributes: [
+            .foregroundColor: color, .paragraphStyle: style,
         ]))
     }
 
@@ -329,13 +324,13 @@ enum AgreementFieldTable {
         style.tabStops = []
         style.defaultTabInterval = 0
         style.paragraphSpacing = 10
-        result.append(NSAttributedString(string: text + "\n", attributes: [
-            .font: font, .foregroundColor: color, .paragraphStyle: style,
+        result.append(AgreementInlineStyle.attributed(text + "\n", font: font, attributes: [
+            .foregroundColor: color, .paragraphStyle: style,
         ]))
     }
 
-    private static func isHeadline(_ line: String, title: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    static func isHeadline(_ line: String, title: String) -> Bool {
+        let trimmed = AgreementInlineStyle.stripped(line).trimmingCharacters(in: .whitespacesAndNewlines)
         if !title.isEmpty, trimmed.caseInsensitiveCompare(title) == .orderedSame {
             return true
         }
@@ -348,13 +343,18 @@ enum AgreementFieldTable {
     }
 
     private static func looksLikeStudioLine(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = AgreementInlineStyle.stripped(line).trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= 80, !trimmed.contains(":") else { return false }
         let lower = trimmed.lowercased()
         return lower.contains("photographer")
             || lower.contains("photography")
             || lower.contains(", llc")
             || lower.contains(" llc")
+    }
+
+    /// Escape, then turn style markers into `<b>` / `<i>` / `<u>`.
+    private static func styledEscape(_ text: String) -> String {
+        AgreementInlineStyle.htmlTags(fromMarkers: escape(text))
     }
 
     private static func escape(_ text: String) -> String {

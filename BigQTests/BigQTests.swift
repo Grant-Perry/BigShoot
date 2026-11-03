@@ -9,6 +9,37 @@ import Testing
 
 @MainActor
 struct BigQTests {
+    @Test func inlineStyleSurvivesSaveAndReload() {
+        let b = AgreementInlineStyle.boldOpen, bx = AgreementInlineStyle.boldClose
+        let i = AgreementInlineStyle.italicOpen, ix = AgreementInlineStyle.italicClose
+        let raw = "Client Name: \(b)Frank\(bx)\nPlease bring \(i)two\(ix) forms of ID to the venue."
+        let html = AgreementFieldTable.normalizedHTML(from: raw, agreementTitle: "")
+        #expect(html.contains("<p>Client Name: <b>Frank</b></p>"))
+        #expect(html.contains("<i>two</i>"))
+
+        let blocks = AgreementPDFLayout.blocks(mergedHTML: html, agreementTitle: "", studioName: nil)
+        #expect(blocks.contains(.field(label: "Client Name", value: "\(b)Frank\(bx)")))
+        #expect(blocks.contains(.paragraph("Please bring \(i)two\(ix) forms of ID to the venue.")))
+
+        let rendered = AgreementInlineStyle.attributed("x \(b)Frank\(bx)", font: .systemFont(ofSize: 12))
+        #expect(rendered.string == "x Frank")
+        let font = rendered.attribute(.font, at: 3, effectiveRange: nil) as? NSFont
+        #expect(font.map { NSFontManager.shared.traits(of: $0).contains(.boldFontMask) } == true)
+    }
+
+    @Test func markedTextSkipsAutomaticLabelBold() {
+        let html = "<p>Client Name: Frank</p>\n<p>Hello <b>world</b> again</p>"
+        let doc = AgreementFieldTable.attributedDocument(from: html, agreementTitle: "")
+        let marked = AgreementInlineStyle.markedText(
+            from: NSTextStorage(attributedString: doc),
+            agreementTitle: ""
+        )
+        let lines = marked.components(separatedBy: "\n")
+        let fieldLine = lines.first { AgreementInlineStyle.stripped($0).contains("Client Name") } ?? ""
+        #expect(!AgreementInlineStyle.containsMarkers(fieldLine))
+        #expect(marked.contains("Hello \(AgreementInlineStyle.boldOpen)world\(AgreementInlineStyle.boldClose) again"))
+    }
+
     @Test func normalizedHTMLAdvancesPastEmptyFieldBeforeAnotherField() {
         // Regression: `Address:` (empty) then `Email: …` looped forever on Save.
         let raw = "Client Name: Frank Engel\nAddress:\nEmail: engelatnona@aol.com\nPhone:\nWedding Date: Oct 3, 2027"

@@ -321,8 +321,8 @@ enum QuotePDFRenderer {
         style.lineBreakMode = .byWordWrapping
         style.lineSpacing = 2
         style.paragraphSpacing = 0
-        return NSAttributedString(string: text, attributes: [
-            .font: font,
+        // Renders user bold / italic / underline markers; plain text passes straight through.
+        return AgreementInlineStyle.attributed(text, font: font, attributes: [
             .foregroundColor: color,
             .paragraphStyle: style,
         ])

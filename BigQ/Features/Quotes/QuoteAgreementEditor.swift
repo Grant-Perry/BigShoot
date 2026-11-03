@@ -79,7 +79,8 @@ struct QuoteAgreementEditor: View {
                 Text("Agreement")
                     .font(.headline)
                 Spacer()
-                if let onPreview, hasBody {
+                // Not gated on hasBody — that flag lags typing; the preview path checks.
+                if let onPreview {
                     Button("Preview Contract", systemImage: "doc.richtext") {
                         // Resign finishes first; then pull HTML and hand off (sync flush
                         // during NSTextView resign beachballs).

@@ -31,7 +31,7 @@ enum AgreementPDFLayout {
             }
 
             if !sawHeadline, matchesHeadline(line, title: title) {
-                result.append(.centeredHeadline(displayHeadline(line, title: title)))
+                result.append(.centeredHeadline(displayHeadline(AgreementInlineStyle.stripped(line), title: title)))
                 result.append(.horizontalRule)
                 sawHeadline = true
                 index += 1
@@ -41,13 +41,14 @@ enum AgreementPDFLayout {
                 index += 1
                 continue
             }
-            if !studio.isEmpty, line.caseInsensitiveCompare(studio) == .orderedSame {
+            if !studio.isEmpty,
+               AgreementInlineStyle.stripped(line).caseInsensitiveCompare(studio) == .orderedSame {
                 result.append(.centeredSubhead(studio))
                 index += 1
                 continue
             }
             if looksLikeStudioLine(line) {
-                result.append(.centeredSubhead(line))
+                result.append(.centeredSubhead(AgreementInlineStyle.stripped(line)))
                 index += 1
                 continue
             }
@@ -77,7 +78,8 @@ enum AgreementPDFLayout {
         var value = parsed.value
         index += 1
 
-        if value.isEmpty {
+        if AgreementInlineStyle.stripped(value).trimmingCharacters(in: .whitespaces).isEmpty {
+            value = ""
             guard index < lines.count else {
                 index = start
                 return nil
@@ -101,9 +103,10 @@ enum AgreementPDFLayout {
         }
 
         // Only reject the *first* value line as prose — Pay Details stacks are long on purpose.
-        let firstValueLine = value.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
+        let plainValue = AgreementInlineStyle.stripped(value)
+        let firstValueLine = plainValue.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
             .first
-            .map(String.init) ?? value
+            .map(String.init) ?? plainValue
         if looksLikeProse(firstValueLine) {
             index = start
             return nil
@@ -131,7 +134,7 @@ enum AgreementPDFLayout {
     }
 
     static func isPaymentContinuation(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = AgreementInlineStyle.stripped(line).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         // A real `Label: value` row is never a continuation — even if the value
         // mentions "due at signing".
@@ -149,8 +152,10 @@ enum AgreementPDFLayout {
     private static func parseFieldLine(_ line: String) -> (label: String, value: String)? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard let colon = trimmed.firstIndex(of: ":") else { return nil }
-        let label = String(trimmed[..<colon]).trimmingCharacters(in: .whitespaces)
-        let value = String(trimmed[trimmed.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        // Label is always plain (auto-bold); value keeps user style markers.
+        let label = AgreementInlineStyle.stripped(String(trimmed[..<colon])).trimmingCharacters(in: .whitespaces)
+        let styledValue = AgreementInlineStyle.trimmed(String(trimmed[trimmed.index(after: colon)...]))
+        let value = AgreementInlineStyle.stripped(styledValue)
         guard !label.isEmpty, label.count <= 40 else { return nil }
         let lower = label.lowercased()
         // Payment-schedule continuations under Pay Details — not labels.
@@ -166,11 +171,11 @@ enum AgreementPDFLayout {
         // Long prose after the colon is a clause body, not a form value.
         if value.count > 60 { return nil }
         if looksLikeProse(value) { return nil }
-        return (label, value)
+        return (label, styledValue)
     }
 
     static func looksLikeProse(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = AgreementInlineStyle.stripped(text).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         if trimmed.count > 60 { return true }
         let lower = trimmed.lowercased()
@@ -183,7 +188,7 @@ enum AgreementPDFLayout {
     }
 
     private static func matchesHeadline(_ line: String, title: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = AgreementInlineStyle.stripped(line).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
         return trimmed.caseInsensitiveCompare(title) == .orderedSame
     }
@@ -193,7 +198,7 @@ enum AgreementPDFLayout {
     }
 
     private static func looksLikeStudioLine(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = AgreementInlineStyle.stripped(line).trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= 80, !trimmed.contains(":") else { return false }
         let lower = trimmed.lowercased()
         return lower.contains("photographer")

@@ -106,7 +106,7 @@ struct AgreementDocumentView: View {
                         .multilineTextAlignment(.trailing)
                         .frame(width: labelWidth, alignment: .trailing)
 
-                    Text(lines.first ?? " ")
+                    Text(AgreementInlineStyle.attributedString(lines.first ?? " "))
                         .font(.system(size: 15))
                         .foregroundStyle(ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,7 +116,7 @@ struct AgreementDocumentView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Color.clear
                             .frame(width: labelWidth, height: 1)
-                        Text(line)
+                        Text(AgreementInlineStyle.attributedString(line))
                             .font(.system(size: 15))
                             .foregroundStyle(ink)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -129,11 +129,9 @@ struct AgreementDocumentView: View {
     }
 
     private func valueLines(_ value: String) -> [String] {
-        value
-            .replacingOccurrences(of: "\u{2028}", with: "\n")
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        AgreementInlineStyle.lines(value)
+            .map { AgreementInlineStyle.trimmed($0) }
+            .filter { !AgreementInlineStyle.stripped($0).isEmpty }
     }
 
     @ViewBuilder
@@ -167,7 +165,7 @@ struct AgreementDocumentView: View {
             EmptyView()
 
         case .paragraph(let text):
-            Text(text)
+            Text(AgreementInlineStyle.attributedString(text))
                 .font(.system(size: 15))
                 .foregroundStyle(ink)
                 .frame(maxWidth: .infinity, alignment: .leading)

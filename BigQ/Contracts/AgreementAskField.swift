@@ -71,7 +71,7 @@ enum AgreementAskField {
 
     /// Pulls a human prompt out of whatever the HTML exporter stuffed between the brackets.
     static func sanitizePrompt(_ raw: String) -> String {
-        var text = raw
+        var text = AgreementInlineStyle.stripped(raw)
         let breaks = ["</p>", "</div>", "</li>", "<br>", "<br/>", "<br />"]
         for tag in breaks {
             text = text.replacingOccurrences(of: tag, with: " ", options: .caseInsensitive)

@@ -72,14 +72,21 @@ final class AgreementEditorSession {
         // Persist plain `Label: value` lines (not Cocoa HTML export) so reload
         // can rebuild the colon column instead of stacking label-above-value.
         html = AgreementFieldTable.normalizedHTML(
-            from: textView.string,
+            from: Self.markedText(of: textView, title: agreementTitle),
             agreementTitle: agreementTitle
         )
     }
 
-    /// Cheap Save path — no normalize, no SwiftUI publish.
+    /// Cheap Save path — no normalize, no SwiftUI publish. Keeps user bold / italic /
+    /// underline as inline markers so `normalizedHTML` can write `<b>` / `<i>` / `<u>`.
     func pullRawPlainText() -> String {
-        textView?.string ?? html
+        guard let textView else { return html }
+        return Self.markedText(of: textView, title: agreementTitle)
+    }
+
+    private static func markedText(of textView: NSTextView, title: String) -> String {
+        guard let storage = textView.textStorage else { return textView.string }
+        return AgreementInlineStyle.markedText(from: storage, agreementTitle: title)
     }
 
     /// Empty the text storage + undo stack before SwiftUI destroys the representable.

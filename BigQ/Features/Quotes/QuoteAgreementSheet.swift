@@ -26,10 +26,11 @@ struct QuoteAgreementSheet: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                // Always enabled: hasBody reads draft, which lags typing. showPreview
+                // flushes the editor and checks for an empty agreement itself.
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(!hasBody)
                     .help("Preview the agreement with this quote’s variables filled in")
             }
             .padding(.bottom, 16)
@@ -127,6 +128,9 @@ struct QuoteAgreementSheet: View {
             VStack(alignment: .trailing, spacing: 8) {
                 if quote.contact != nil, hasBody, hasFillableClientTokens {
                     Button("Fill Client Fields") {
+                        // Pull what's in the editor first — typing never reaches draft until
+                        // blur, so filling from draft alone would reload stale text over it.
+                        agreementFlush.call()
                         draft.agreementHTML = fillKnownFields(draft.agreementHTML)
                     }
                     .help("Replace blue client and job chips with this quote’s contact info")
@@ -172,7 +176,8 @@ struct QuoteAgreementSheet: View {
                 .focusable(false)
             Button("Save") { save() }
                 .buttonStyle(.borderedProminent)
-                .disabled(!hasBody || isSaving)
+                // Not gated on hasBody — draft lags typing. save() checks the pulled text.
+                .disabled(isSaving)
                 .keyboardShortcut(.defaultAction)
                 .focusable(false)
         }
@@ -268,6 +273,8 @@ struct QuoteAgreementSheet: View {
             let bodyOK = !titleSnapshot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || !normalized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             guard bodyOK else {
+                draft.agreementHTML = normalized
+                errorMessage = "Add an agreement before saving."
                 isSaving = false
                 editorMounted = true
                 return
