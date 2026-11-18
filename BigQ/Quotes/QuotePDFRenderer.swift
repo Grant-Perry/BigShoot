@@ -15,13 +15,14 @@ enum QuotePDFRenderer {
         let pricing = renderPricing(quote)
         guard quote.hasAgreement else { return pricing }
         let agreement = renderAgreement(quote)
-        return merge(pricing, agreement) ?? pricing
+        guard let merged = merge(pricing, agreement) else { return pricing }
+        return PDFFormPatcher.patch(merged)
     }
 
     /// Agreement pages only — merged variables, no pricing sheet.
     static func renderAgreementOnly(_ quote: Quote) -> Data {
         guard quote.hasAgreement else { return Data() }
-        return renderAgreement(quote)
+        return PDFFormPatcher.patch(renderAgreement(quote))
     }
 
     private static func renderPricing(_ quote: Quote) -> Data {
@@ -86,11 +87,52 @@ enum QuotePDFRenderer {
                 invoice,
                 documentTitle: "Quote",
                 dateLabel: "Quote date",
-                dueLabel: "Valid until"
+                dueLabel: "Valid until",
+                numberSize: 14,
+                schedule: scheduleRows(quote, total: invoice.total)
             )
         } catch {
             DebugPrint(mode: .error, "Quote PDF pricing failed: \(error.localizedDescription)")
             return Data()
+        }
+    }
+
+    /// The quote's payment terms resolved to amounts and due dates for the pricing page.
+    private static func scheduleRows(_ quote: Quote, total: Decimal) -> [InvoicePDFRenderer.ScheduleRow] {
+        guard quote.paymentScheduleMode != .none else { return [] }
+        var terms = quote.sortedPaymentTerms.map { term in
+            DraftPaymentTerm(
+                title: term.title,
+                amountMode: term.amountMode,
+                percent: term.percent,
+                fixedAmount: term.fixedAmount,
+                dueMode: term.dueMode,
+                daysBeforeEvent: term.daysBeforeEvent,
+                fixedDueDate: term.fixedDueDate ?? .now,
+                amount: term.amount
+            )
+        }
+        guard !terms.isEmpty else { return [] }
+        QuotePaymentSchedule.recalculate(&terms, total: total)
+        let eventDate = quote.job?.eventDate
+        return terms.enumerated().map { index, term in
+            let title = term.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            // The label already says when; the middle column only carries the date.
+            let due: String
+            switch term.dueMode {
+            case .signature:
+                due = ""
+            case .daysBeforeEvent:
+                due = QuotePaymentSchedule.resolveDue(term, signatureDate: nil, eventDate: eventDate)
+                    .map { StudioDay.string($0) } ?? ""
+            case .fixedDate:
+                due = StudioDay.string(term.fixedDueDate)
+            }
+            return InvoicePDFRenderer.ScheduleRow(
+                label: title.isEmpty ? "Payment \(index + 1)" : title,
+                due: due,
+                amount: StudioMoney.string(term.amount)
+            )
         }
     }
 
@@ -128,8 +170,13 @@ enum QuotePDFRenderer {
 
         let contentWidth = media.width - margin * 2
         var blockIndex = 0
-        while blockIndex < blocks.count {
+        var signaturePainted = false
+        var pageNumber = -1
+        var signatureFields: [(name: String, page: Int, rect: CGRect)] = []
+        let signatureHeight: CGFloat = 150
+        while blockIndex < blocks.count || !signaturePainted {
             context.beginPDFPage(nil)
+            pageNumber += 1
             var y: CGFloat = 54
             paint("Agreement", x: margin, top: y, width: contentWidth, font: sans(9, weight: .semibold), color: mute, context: context)
             y += 18
@@ -144,11 +191,86 @@ enum QuotePDFRenderer {
                 y = paint(block, top: y, contentWidth: contentWidth, fieldColumn: fieldColumn, context: context)
                 blockIndex += 1
             }
+            if blockIndex == blocks.count, !signaturePainted, y + signatureHeight <= pageSize.height - 54 || blockIndex == pageStart {
+                let fields = paintSignatures(quote, top: y + 16, contentWidth: contentWidth, context: context)
+                signatureFields = fields.map { ($0.name, pageNumber, $0.rect) }
+                signaturePainted = true
+            }
             context.endPDFPage()
-            if blockIndex == pageStart { break }
+            if blockIndex == pageStart, !signaturePainted { break }
         }
         context.closePDF()
-        return data as Data
+        return addSignatureFields(signatureFields, to: data as Data)
+    }
+
+    /// Fillable text fields sitting on the signature and date lines, so the client can type instead of printing.
+    private static func addSignatureFields(_ fields: [(name: String, page: Int, rect: CGRect)], to data: Data) -> Data {
+        guard !fields.isEmpty, let document = PDFDocument(data: data) else { return data }
+        for field in fields {
+            guard let page = document.page(at: field.page) else { continue }
+            // rect is top-based; PDF space is bottom-up.
+            let bounds = CGRect(
+                x: field.rect.minX,
+                y: pageSize.height - field.rect.maxY,
+                width: field.rect.width,
+                height: field.rect.height
+            )
+            let widget = PDFAnnotation(bounds: bounds, forType: .widget, withProperties: nil)
+            widget.widgetFieldType = .text
+            widget.fieldName = field.name
+            widget.isMultiline = false
+            widget.isReadOnly = false
+            widget.widgetStringValue = ""
+            // Base-14 Helvetica only: the system UI font name isn't a valid PDF font and makes the field reject typing.
+            widget.font = NSFont(name: "Helvetica", size: field.name.hasSuffix("Signature") ? 14 : 11)
+            widget.maximumLength = field.name.hasSuffix("Signature") ? 120 : 24
+            widget.fontColor = ink
+            widget.backgroundColor = gold.withAlphaComponent(0.12)
+            widget.border = PDFBorder()
+            widget.border?.lineWidth = 0
+            page.addAnnotation(widget)
+        }
+        return document.dataRepresentation() ?? data
+    }
+
+    /// Client and studio signature lines so a printed copy can be signed by hand or filled in on screen.
+    private static func paintSignatures(
+        _ quote: Quote,
+        top: CGFloat,
+        contentWidth: CGFloat,
+        context: CGContext
+    ) -> [(name: String, rect: CGRect)] {
+        var fields: [(name: String, rect: CGRect)] = []
+        var y = top
+        paint(
+            "By signature below, the parties agree to the terms of this Agreement.",
+            x: margin, top: y, width: contentWidth, font: sans(11), color: ink, context: context
+        )
+        y += 58
+        let gap: CGFloat = 40
+        let columnWidth = (contentWidth - gap) / 2
+        let columns: [(role: String, name: String)] = [
+            ("Client", quote.clientName),
+            ("Studio", quote.studio?.displayName ?? "Studio")
+        ]
+        // Captions end in ":" and right-align to one colon edge per column, so "Date:" lines up under "… signature:".
+        let captionFont = sans(9, weight: .semibold)
+        let captionWidth = ceil(columns.map {
+            NSAttributedString(string: "\($0.role) signature:", attributes: [.font: captionFont]).size().width
+        }.max() ?? 0) + 2
+        for (index, column) in columns.enumerated() {
+            let x = margin + CGFloat(index) * (columnWidth + gap)
+            let key = column.role.lowercased()
+            fields.append(("\(key)Signature", CGRect(x: x, y: y - 28, width: columnWidth, height: 26)))
+            fields.append(("\(key)Date", CGRect(x: x, y: y + 64 - 20, width: columnWidth * 0.6, height: 18)))
+            rule(x: x, y: y, width: columnWidth, context: context)
+            paint("\(column.role) signature:", x: x, top: y + 4, width: captionWidth, font: captionFont, color: mute, alignment: .right, context: context)
+            paint(column.name, x: x, top: y + 20, width: columnWidth, font: sans(11), color: ink, context: context)
+            let dateY = y + 64
+            rule(x: x, y: dateY, width: columnWidth * 0.6, context: context)
+            paint("Date:", x: x, top: dateY + 4, width: captionWidth, font: captionFont, color: mute, alignment: .right, context: context)
+        }
+        return fields
     }
 
     private static func blockHeight(

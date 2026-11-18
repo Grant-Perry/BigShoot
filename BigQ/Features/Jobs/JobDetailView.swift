@@ -362,9 +362,9 @@ struct JobEditorSheet: View {
             Text(job == nil ? "New job" : "Edit job")
                 .font(StudioDesign.displayTitle)
             Form {
-                TextField("Name", text: $name)
+                TextField("Name:", text: $name)
                     .focused($nameFocused)
-                Picker("Type", selection: $typeTag) {
+                Picker("Type:", selection: $typeTag) {
                     Label("Add Type", systemImage: "plus").tag(JobTypeMenuTag.add)
                     Divider()
                     ForEach(typeChoices, id: \.self) { name in
@@ -375,9 +375,9 @@ struct JobEditorSheet: View {
                 .onChange(of: typeTag) { _, tag in
                     handleTypeTag(tag)
                 }
-                Toggle("Event date", isOn: $hasDate)
+                Toggle("Event date:", isOn: $hasDate)
                 if hasDate {
-                    DatePicker("Event Date", selection: $eventDate, displayedComponents: .date)
+                    DatePicker("Event date:", selection: $eventDate, displayedComponents: .date)
                 }
                 ContactPickerField(
                     contacts: contacts,

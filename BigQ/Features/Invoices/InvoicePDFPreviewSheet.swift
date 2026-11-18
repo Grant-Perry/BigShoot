@@ -126,7 +126,7 @@ struct InvoicePDFView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: PDFView, context: Context) {
-        view.document = document
+        if view.document !== document { view.document = document }
     }
 }
 

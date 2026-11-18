@@ -14,6 +14,7 @@ struct QuoteDetailView: View {
     var onDelete: () -> Void
 
     @State private var isAgreementExpanded = false
+    @State private var copiedPaymentTerms = false
     /// Token for the HTML we expanded. When Save writes new HTML, the token
     /// mismatches and the heavy `AgreementDocumentView` unmounts instead of re-parsing.
     @State private var expandedAgreementToken = 0
@@ -167,34 +168,67 @@ struct QuoteDetailView: View {
 
     // MARK: - Payment terms
 
+    private var paymentTermDrafts: [DraftPaymentTerm] {
+        quote.sortedPaymentTerms.map { term in
+            DraftPaymentTerm(
+                title: term.title,
+                amountMode: term.amountMode,
+                percent: term.percent,
+                fixedAmount: term.fixedAmount,
+                dueMode: term.dueMode,
+                daysBeforeEvent: term.daysBeforeEvent,
+                fixedDueDate: term.fixedDueDate ?? .now,
+                amount: term.amount
+            )
+        }
+    }
+
     private var paymentTermsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Payment terms", systemImage: "calendar.badge.clock")
-                .font(.headline)
+            HStack(spacing: 8) {
+                Label("Payment terms", systemImage: "calendar.badge.clock")
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Button(action: copyPaymentTerms) {
+                    Label(
+                        copiedPaymentTerms ? "Copied" : "Copy",
+                        systemImage: copiedPaymentTerms ? "checkmark" : "doc.on.doc"
+                    )
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(copiedPaymentTerms ? StudioDesign.gold : Color.primary)
+                }
+                .buttonStyle(.borderless)
+                .help(copiedPaymentTerms ? "Copied" : "Copy payment terms")
+            }
             Text(quote.paymentScheduleMode.title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ForEach(quote.sortedPaymentTerms) { term in
-                Text(
-                    QuotePaymentSchedule.summaryLine(
-                        DraftPaymentTerm(
-                            title: term.title,
-                            amountMode: term.amountMode,
-                            percent: term.percent,
-                            fixedAmount: term.fixedAmount,
-                            dueMode: term.dueMode,
-                            daysBeforeEvent: term.daysBeforeEvent,
-                            fixedDueDate: term.fixedDueDate ?? .now,
-                            amount: term.amount
-                        )
-                    )
-                )
-                .font(.callout)
+            StudioLabeledStack {
+                ForEach(Array(paymentTermDrafts.enumerated()), id: \.offset) { index, draft in
+                    StudioLabeledRow(QuotePaymentSchedule.summaryLabel(draft, index: index)) {
+                        Text(QuotePaymentSchedule.summaryValue(draft))
+                    }
+                }
             }
+            .font(.callout)
         }
         .padding(StudioDesign.Spacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
         .studioCard()
+    }
+
+    private func copyPaymentTerms() {
+        let lines = paymentTermDrafts.enumerated().map { index, draft in
+            "\(QuotePaymentSchedule.summaryLabel(draft, index: index)): \(QuotePaymentSchedule.summaryValue(draft))"
+        }
+        let board = NSPasteboard.general
+        board.clearContents()
+        board.setString(lines.joined(separator: "\n"), forType: .string)
+        copiedPaymentTerms = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            copiedPaymentTerms = false
+        }
     }
 
     // MARK: - Agreement
@@ -307,10 +341,13 @@ struct QuoteDetailView: View {
                 }
             }
             Divider()
-            totalsRow("Tax", quote.tax)
-            if quote.discount > 0 { totalsRow("Discount", -quote.discount) }
-            if quote.shipping > 0 { totalsRow("Shipping", quote.shipping) }
-            totalsRow("Total", quote.total, emphasize: true)
+            // Shared label column so the colons line up; amounts stay right-aligned.
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
+                totalsRow("Tax", quote.tax)
+                if quote.discount > 0 { totalsRow("Discount", -quote.discount) }
+                if quote.shipping > 0 { totalsRow("Shipping", quote.shipping) }
+                totalsRow("Total", quote.total, emphasize: true)
+            }
         }
         .padding(StudioDesign.Spacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -351,13 +388,14 @@ struct QuoteDetailView: View {
     }
 
     private func totalsRow(_ title: String, _ amount: Decimal, emphasize: Bool = false) -> some View {
-        HStack {
-            Text(title)
+        GridRow {
+            Text(title + ":")
                 .foregroundStyle(emphasize ? .primary : .secondary)
-            Spacer()
+                .gridColumnAlignment(.trailing)
             Text(StudioMoney.string(amount))
                 .monospacedDigit()
                 .fontWeight(emphasize ? .semibold : .regular)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 }

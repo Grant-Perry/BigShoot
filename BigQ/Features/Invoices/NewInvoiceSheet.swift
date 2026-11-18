@@ -116,15 +116,18 @@ struct NewInvoiceSheet: View {
     }
 
     private var clientColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 20) {
+        // Two label/value column pairs so each side's colons share one edge.
+        StudioLabeledStack {
+            GridRow {
+                fieldLabel("Client")
                 ContactPickerField(
                     contacts: contacts,
                     selection: $draft.contact,
-                    label: "Client:",
+                    showsLabel: false,
                     onAdd: { contactEditor = .new }
                 )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                fieldLabel("Job")
                 JobMenuPicker(
                     jobs: jobs,
                     selection: draft.job,
@@ -134,26 +137,44 @@ struct NewInvoiceSheet: View {
                     onSelect: selectJob,
                     onEdit: presentJobEditor
                 )
+                .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            jobNotice
-            HStack(alignment: .top, spacing: 20) {
-                DatePicker("Invoice date:", selection: $draft.invoiceDate, displayedComponents: .date)
-                DatePicker("Due:", selection: $draft.dueDate, displayedComponents: .date)
-                VStack(alignment: .leading, spacing: 8) {
-                    NetDaysField(days: $draft.netDays)
-                    InvoiceSubmittedField(submittedAt: $draft.submittedAt)
+            if showsJobNotice {
+                GridRow {
+                    jobNotice
+                        .gridCellColumns(4)
                 }
-                Spacer(minLength: 0)
             }
-            InvoiceTaxControls(draft: draft, schedules: schedules)
-            HStack(alignment: .top, spacing: 20) {
+            GridRow {
+                fieldLabel("Invoice date")
+                DatePicker("Invoice date:", selection: $draft.invoiceDate, displayedComponents: .date)
+                    .labelsHidden()
+                fieldLabel("Due")
+                DatePicker("Due:", selection: $draft.dueDate, displayedComponents: .date)
+                    .labelsHidden()
+            }
+            GridRow {
+                fieldLabel("Net")
+                NetDaysField(days: $draft.netDays)
+                fieldLabel("Invoice Submitted")
+                InvoiceSubmittedField(submittedAt: $draft.submittedAt, showsLabel: false)
+            }
+            GridRow {
+                fieldLabel("Charge Tax")
+                InvoiceTaxControls(draft: draft, schedules: schedules)
+                    .labelsHidden()
+                    .gridCellColumns(3)
+            }
+            GridRow {
+                fieldLabel("Note")
                 invoiceText(
                     "Note:",
                     prompt: "Prints on the invoice",
                     text: $draft.note,
                     help: "Prints in small type above the sign-off."
                 )
+                fieldLabel("Sign-off")
                 invoiceText(
                     "Sign-off:",
                     prompt: "Thank you.",
@@ -206,20 +227,28 @@ struct NewInvoiceSheet: View {
         return "Edit invoice: \(number)"
     }
 
+    private func fieldLabel(_ title: String) -> some View {
+        Text(title + ":")
+            .foregroundStyle(.secondary)
+            .gridColumnAlignment(.trailing)
+    }
+
     private func invoiceText(
         _ title: String,
         prompt: String,
         text: Binding<String>,
         help: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField(prompt, text: text, axis: .vertical)
-                .lineLimit(2, reservesSpace: true)
-        }
-        .help(help)
+        TextField(title, text: text, prompt: Text(prompt), axis: .vertical)
+            .labelsHidden()
+            .lineLimit(2, reservesSpace: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(help)
+    }
+
+    private var showsJobNotice: Bool {
+        (bypassPrompt != nil && contactHasOpenInvoice)
+            || (draft.job != nil && !openInvoicesOnJob.isEmpty && !draft.isEditing)
     }
 
     @ViewBuilder
@@ -420,8 +449,6 @@ private struct NetDaysField: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("Net:")
-                .accessibilityHidden(true)
             TextField("Days", value: $days, format: .number.grouping(.never))
                 .multilineTextAlignment(.trailing)
                 .frame(width: 48)

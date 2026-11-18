@@ -191,7 +191,14 @@ enum QuotePaymentSchedule {
         }
     }
 
-    static func summaryLine(_ term: DraftPaymentTerm) -> String {
+    /// Row label for a term: its title, or "Payment N" (1-based) when untitled.
+    static func summaryLabel(_ term: DraftPaymentTerm, index: Int) -> String {
+        let title = term.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Payment \(index + 1)" : title
+    }
+
+    /// Row value for a term: "amount · due".
+    static func summaryValue(_ term: DraftPaymentTerm) -> String {
         let amountLabel: String
         switch term.amountMode {
         case .percentOfTotal where term.amount == 0 && term.percent != 0:
@@ -210,9 +217,7 @@ enum QuotePaymentSchedule {
         case .fixedDate:
             due = StudioDay.string(term.fixedDueDate)
         }
-        let title = term.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if title.isEmpty { return "\(amountLabel) · \(due)" }
-        return "\(title): \(amountLabel) · \(due)"
+        return "\(amountLabel) · \(due)"
     }
 
     static func drafts(from job: Job) -> [DraftPaymentTerm] {

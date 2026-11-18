@@ -14,8 +14,16 @@ final class QuoteDraftModel {
     private var editingID: PersistentIdentifier?
     private var editingStatus: QuoteStatus?
     private var issuedNumber = ""
+    /// Editable quote number. Blank means "assign the next one when sent".
+    var numberText = ""
 
     var canSave: Bool { pricing.canSave }
+
+    /// True when another quote already uses the typed number.
+    func isNumberTaken(among quotes: [Quote]) -> Bool {
+        let others = quotes.filter { $0.persistentModelID != editingID }.map(\.number)
+        return QuoteMath.isNumberTaken(numberText, among: others)
+    }
 
     var isMissingTaxRate: Bool { pricing.isMissingTaxRate }
 
@@ -43,6 +51,7 @@ final class QuoteDraftModel {
         editingID = quote.persistentModelID
         editingStatus = quote.status
         issuedNumber = quote.number
+        numberText = quote.number
         validUntil = quote.validUntil
         agreementTitle = quote.agreementTitle
         agreementHTML = quote.agreementHTML
@@ -92,7 +101,7 @@ final class QuoteDraftModel {
             job: pricing.job,
             studio: studio
         )
-        let number = issuedNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        let number = numberText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !number.isEmpty {
             ctx.quoteNumber = number
         }
@@ -167,7 +176,7 @@ final class QuoteDraftModel {
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = ModelContext(container)
         let quote = Quote(
-            number: issuedNumber,
+            number: numberText.trimmingCharacters(in: .whitespacesAndNewlines),
             quoteDate: pricing.invoiceDate,
             validUntil: validUntil,
             status: .draft,
@@ -262,7 +271,19 @@ final class QuoteDraftModel {
         if paymentScheduleMode != .none, !paymentScheduleIsComplete {
             throw QuoteDraftError.incompletePaymentSchedule
         }
+        let typedNumber = numberText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typedNumber.isEmpty {
+            let others = try context.fetch(FetchDescriptor<Quote>())
+                .filter { $0.persistentModelID != editingID }
+                .map(\.number)
+            if QuoteMath.isNumberTaken(typedNumber, among: others) {
+                throw QuoteDraftError.duplicateNumber(typedNumber)
+            }
+        }
         let quote = try preparedQuote(in: context)
+        if !typedNumber.isEmpty {
+            quote.number = typedNumber
+        }
         quote.contact = pricing.contact
         quote.job = pricing.job
         quote.quoteDate = pricing.invoiceDate
@@ -294,6 +315,7 @@ final class QuoteDraftModel {
         QuoteMath.recalculate(quote)
         try context.save()
         issuedNumber = quote.number
+        numberText = quote.number
         editingID = quote.persistentModelID
         editingStatus = quote.status
         return quote
@@ -359,9 +381,12 @@ final class QuoteDraftModel {
 enum QuoteDraftError: LocalizedError, Equatable {
     case incompletePaymentSchedule
     case agreementRequiresSavedQuote
+    case duplicateNumber(String)
 
     var errorDescription: String? {
         switch self {
+        case let .duplicateNumber(number):
+            "Another quote already uses number \(number)."
         case .incompletePaymentSchedule:
             "Payment terms must add up to 100% of the quote total."
         case .agreementRequiresSavedQuote:

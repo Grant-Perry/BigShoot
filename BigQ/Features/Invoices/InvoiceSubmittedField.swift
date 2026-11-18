@@ -3,6 +3,8 @@ import SwiftUI
 /// Checkbox that stamps the pipeline time, with the title opening a calendar to change it.
 struct InvoiceSubmittedField: View {
     @Binding var submittedAt: Date?
+    /// Off when a surrounding label column supplies "Invoice Submitted:", so the colons line up.
+    var showsLabel = true
 
     @State private var showCalendar = false
     @State private var calendarDate = Date.now
@@ -11,7 +13,9 @@ struct InvoiceSubmittedField: View {
         HStack(spacing: 8) {
             Button(action: openCalendar) {
                 HStack(spacing: 4) {
-                    Text("Invoice Submitted:")
+                    if showsLabel {
+                        Text("Invoice Submitted:")
+                    }
                     Image(systemName: "calendar")
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -74,7 +74,7 @@ struct ContractReaderSheet: View {
     private var studioNameHint: String? { nil }
 
     private var contextLine: String {
-        [contract.job?.displayName, contract.eventLabel, contract.sentAt.map { "Sent \(StudioDay.string($0))" }]
+        [contract.job?.displayName, contract.eventLabel, contract.sentAt.map { "Sent: \(StudioDay.string($0))" }]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " · ")

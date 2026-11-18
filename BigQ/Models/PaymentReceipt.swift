@@ -9,6 +9,8 @@ final class PaymentReceipt {
     var paidAt: Date
     var amount: Decimal
     var methodRaw: String
+    /// Braintree transaction id. Empty on payments recorded by hand.
+    var processorTransactionID: String = ""
 
     var invoice: Invoice?
 

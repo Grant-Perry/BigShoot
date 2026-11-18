@@ -29,7 +29,7 @@ struct InvoiceListRow: View {
                     Text(StudioDay.string(invoice.invoiceDate))
                     if let due = invoice.dueDate {
                         Text("·")
-                        Text("Due \(StudioDay.string(due))")
+                        Text("Due: \(StudioDay.string(due))")
                         if showsCountdown {
                             Text("·")
                             Text(InvoiceMath.dueCountdown(until: due))

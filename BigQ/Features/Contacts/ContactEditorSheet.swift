@@ -21,15 +21,15 @@ struct ContactEditorSheet: View {
             Text(mode.contact == nil ? "New contact" : "Edit contact")
                 .font(StudioDesign.displayTitle)
             Form {
-                TextField("First name", text: $firstName)
-                TextField("Last name", text: $lastName)
-                TextField("Company", text: $companyName)
-                TextField("Email", text: $email)
-                TextField("Phone", text: $phone)
-                TextField("Address", text: $address, axis: .vertical)
-                Toggle("Anniversary", isOn: $hasAnniversary)
+                TextField("First name:", text: $firstName)
+                TextField("Last name:", text: $lastName)
+                TextField("Company:", text: $companyName)
+                TextField("Email:", text: $email)
+                TextField("Phone:", text: $phone)
+                TextField("Address:", text: $address, axis: .vertical)
+                Toggle("Anniversary:", isOn: $hasAnniversary)
                 if hasAnniversary {
-                    DatePicker("Date", selection: $anniversary, displayedComponents: .date)
+                    DatePicker("Date:", selection: $anniversary, displayedComponents: .date)
                 }
             }
             .formStyle(.grouped)

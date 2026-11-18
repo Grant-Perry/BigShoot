@@ -4,7 +4,7 @@ import SwiftData
 
 enum StudioStore {
     static func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: StudioSchemaV12.self)
+        let schema = Schema(versionedSchema: StudioSchemaV13.self)
         let support = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -24,6 +24,7 @@ enum StudioStore {
         backupOnce(storeURL, markerName: "BigQ.store.pre-archive-backup")
         backupOnce(storeURL, markerName: "BigQ.store.pre-quote-backup")
         backupOnce(storeURL, markerName: "BigQ.store.pre-payment-terms-backup")
+        backupOnce(storeURL, markerName: "BigQ.store.pre-pay-link-backup")
         let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
         // Older books don't match the staged version stamps. Opening the latest schema
         // lightweight-migrates new columns and the studio model.

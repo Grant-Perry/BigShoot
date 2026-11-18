@@ -22,11 +22,11 @@ struct ContactDetailView: View {
                 }
                 .textSelection(.enabled)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    detailRow("Email", contact.email)
-                    detailRow("Phone", contact.phone)
-                    detailRow("Address", contact.address)
-                    detailRow("Anniversary", StudioDay.string(contact.anniversary))
+                StudioLabeledStack {
+                    StudioLabeledRow("Email") { Text(display(contact.email)) }
+                    StudioLabeledRow("Phone") { Text(display(contact.phone)) }
+                    StudioLabeledRow("Address") { Text(display(contact.address)) }
+                    StudioLabeledRow("Anniversary") { Text(display(StudioDay.string(contact.anniversary))) }
                 }
                 .padding(StudioDesign.Spacing.card)
                 .paperCard()
@@ -94,13 +94,8 @@ struct ContactDetailView: View {
         }
     }
 
-    private func detailRow(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .frame(width: 110, alignment: .leading)
-                .foregroundStyle(.secondary)
-            Text(value.isEmpty || value == "—" ? "—" : value)
-        }
+    private func display(_ value: String) -> String {
+        value.isEmpty || value == "—" ? "—" : value
     }
 
     private func linkedSection<Content: View>(_ title: String, symbol: String, @ViewBuilder content: () -> Content) -> some View {

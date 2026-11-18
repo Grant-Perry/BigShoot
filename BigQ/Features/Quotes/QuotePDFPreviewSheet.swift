@@ -11,6 +11,8 @@ struct QuotePDFPreviewSheet: View {
     var agreementOnly = false
 
     @State private var shareError: String?
+    /// Built once so typing into the signature fields isn't thrown away when the sheet redraws.
+    @State private var document: PDFDocument?
 
     private var data: Data {
         agreementOnly
@@ -50,7 +52,7 @@ struct QuotePDFPreviewSheet: View {
                 Text(shareError)
                     .foregroundStyle(.red)
             }
-            if !data.isEmpty, let document = PDFDocument(data: data) {
+            if let document {
                 InvoicePDFView(document: document)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -64,6 +66,12 @@ struct QuotePDFPreviewSheet: View {
         .padding(20)
         .frame(minWidth: 720, minHeight: 860)
         .studioActive()
+        .onAppear {
+            if document == nil {
+                let rendered = data
+                document = rendered.isEmpty ? nil : PDFDocument(data: rendered)
+            }
+        }
     }
 
     private func save() {
@@ -73,7 +81,9 @@ struct QuotePDFPreviewSheet: View {
         panel.nameFieldStringValue = "\(stub)-\(quote.displayNumber).pdf"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try data.write(to: url, options: .atomic)
+            // Save the live document so anything typed into the form fields is kept.
+            let output = document?.dataRepresentation().map(PDFFormPatcher.patch) ?? data
+            try output.write(to: url, options: .atomic)
             shareError = nil
         } catch {
             shareError = "Couldn’t save the PDF."

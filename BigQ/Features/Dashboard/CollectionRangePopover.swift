@@ -5,9 +5,15 @@ struct CollectionRangePopover: View {
     @Binding var end: Date
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DatePicker("Start", selection: $start, in: ...end, displayedComponents: .date)
-            DatePicker("End", selection: $end, in: start..., displayedComponents: .date)
+        StudioLabeledStack {
+            StudioLabeledRow("Start") {
+                DatePicker("Start", selection: $start, in: ...end, displayedComponents: .date)
+                    .labelsHidden()
+            }
+            StudioLabeledRow("End") {
+                DatePicker("End", selection: $end, in: start..., displayedComponents: .date)
+                    .labelsHidden()
+            }
         }
         .datePickerStyle(.compact)
         .padding(16)

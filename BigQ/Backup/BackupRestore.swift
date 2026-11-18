@@ -475,6 +475,7 @@ enum BackupRestore {
         invoice.closing = record.closing
         invoice.submittedAt = record.submittedAt
         invoice.isImported = record.isImported
+        invoice.payToken = record.payToken ?? ""
         invoice.contact = record.contactID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
         invoice.job = record.jobID.flatMap { jobs.existing(archiveID: $0, shootqID: nil) }
         invoice.studio = record.studioID.flatMap { studios.existing(archiveID: $0, shootqID: nil) }
@@ -773,6 +774,7 @@ enum BackupRestore {
                     method: PaymentMethod(rawValue: record.method) ?? .other
                 )
                 receipt.methodRaw = record.method
+                receipt.processorTransactionID = record.processorTransactionID ?? ""
                 receipt.invoice = item.invoice
                 context.insert(receipt)
             }

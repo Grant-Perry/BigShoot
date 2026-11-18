@@ -9,6 +9,7 @@ struct NewQuoteSheet: View {
     @Query(sort: \Contact.fullName) private var contacts: [Contact]
     @Query(sort: \CatalogItem.name) private var catalog: [CatalogItem]
     @Query(sort: \TaxSchedule.name) private var schedules: [TaxSchedule]
+    @Query private var quotes: [Quote]
 
     var existing: Quote?
     @State private var draft: QuoteDraftModel
@@ -101,51 +102,76 @@ struct NewQuoteSheet: View {
     private func clientColumn(pricing: InvoiceDraftModel) -> some View {
         @Bindable var pricing = pricing
         return VStack(alignment: .leading, spacing: 12) {
+            // Two label columns; colons line up within each.
             HStack(alignment: .top, spacing: 20) {
-                ContactPickerField(
-                    contacts: contacts,
-                    selection: $pricing.contact,
-                    label: "Client:",
-                    onAdd: { contactEditor = .new }
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                JobMenuPicker(
-                    jobs: jobs,
-                    selection: pricing.job,
-                    onAdd: { presentJobEditor(nil) },
-                    onSelect: selectJob,
-                    onEdit: presentJobEditor
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            HStack(alignment: .top, spacing: 20) {
-                DatePicker("Quote date:", selection: $pricing.invoiceDate, displayedComponents: .date)
-                eventDateField(pricing: pricing)
-                Toggle("Valid until", isOn: $includeValidUntil)
-                    .toggleStyle(.checkbox)
-                    .onChange(of: includeValidUntil) { _, on in
-                        if on, draft.validUntil == nil {
-                            draft.validUntil = Calendar.current.date(byAdding: .day, value: 30, to: pricing.invoiceDate)
-                        }
-                        if !on { draft.validUntil = nil }
+                StudioLabeledStack {
+                    StudioLabeledRow("Client") {
+                        ContactPickerField(
+                            contacts: contacts,
+                            selection: $pricing.contact,
+                            label: "Client:",
+                            showsLabel: false,
+                            onAdd: { contactEditor = .new }
+                        )
                     }
-                if includeValidUntil {
-                    DatePicker(
-                        "Valid until:",
-                        selection: Binding(
-                            get: { draft.validUntil ?? pricing.invoiceDate },
-                            set: { draft.validUntil = $0 }
-                        ),
-                        displayedComponents: .date
-                    )
+                    StudioLabeledRow("Number") {
+                        numberField
+                    }
+                    StudioLabeledRow("Quote date") {
+                        DatePicker("Quote date:", selection: $pricing.invoiceDate, displayedComponents: .date)
+                            .labelsHidden()
+                    }
+                    StudioLabeledRow("Valid until") {
+                        HStack(spacing: 8) {
+                            Toggle("Valid until:", isOn: $includeValidUntil)
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+                                .onChange(of: includeValidUntil) { _, on in
+                                    if on, draft.validUntil == nil {
+                                        draft.validUntil = Calendar.current.date(byAdding: .day, value: 30, to: pricing.invoiceDate)
+                                    }
+                                    if !on { draft.validUntil = nil }
+                                }
+                            if includeValidUntil {
+                                DatePicker(
+                                    "Valid until:",
+                                    selection: Binding(
+                                        get: { draft.validUntil ?? pricing.invoiceDate },
+                                        set: { draft.validUntil = $0 }
+                                    ),
+                                    displayedComponents: .date
+                                )
+                                .labelsHidden()
+                            }
+                        }
+                    }
+                    StudioLabeledRow("Note") {
+                        noteField(prompt: "Prints on the quote", text: $pricing.note)
+                    }
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                StudioLabeledStack {
+                    StudioLabeledRow("Job") {
+                        // Row supplies "Job:"; hide the picker's own LabeledContent label.
+                        JobMenuPicker(
+                            jobs: jobs,
+                            selection: pricing.job,
+                            onAdd: { presentJobEditor(nil) },
+                            onSelect: selectJob,
+                            onEdit: presentJobEditor
+                        )
+                        .labelsHidden()
+                    }
+                    StudioLabeledRow("Event date") {
+                        eventDateField(pricing: pricing)
+                    }
+                    StudioLabeledRow("Sign-off") {
+                        noteField(prompt: "Thank you.", text: $pricing.closing)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             InvoiceTaxControls(draft: pricing, schedules: schedules)
-            HStack(alignment: .top, spacing: 20) {
-                field("Note:", prompt: "Prints on the quote", text: $pricing.note)
-                field("Sign-off:", prompt: "Thank you.", text: $pricing.closing)
-            }
         }
         .onChange(of: pricing.contact?.persistentModelID) { _, _ in
             if let job = pricing.job, job.contact?.persistentModelID != pricing.contact?.persistentModelID {
@@ -205,27 +231,41 @@ struct NewQuoteSheet: View {
                 ),
                 displayedComponents: .date
             )
+            .labelsHidden()
             .help("Stored on the job. Fills [Event Date] and payment dates before the event.")
         } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Event date:")
+            Text("Select a job")
+                .foregroundStyle(.secondary)
+                .help("Event date comes from the job — pick or add one above.")
+        }
+    }
+
+    private var numberTaken: Bool {
+        draft.isNumberTaken(among: quotes)
+    }
+
+    /// Letters and digits allowed. A number another quote already uses blocks saving.
+    private var numberField: some View {
+        @Bindable var draft = draft
+        return VStack(alignment: .leading, spacing: 4) {
+            TextField("Assigned when sent", text: $draft.numberText)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 180, alignment: .leading)
+                .onChange(of: draft.numberText) { _, value in
+                    let cleaned = QuoteMath.sanitizedNumber(value)
+                    if cleaned != value { draft.numberText = cleaned }
+                }
+            if numberTaken {
+                Text("Another quote already uses this number.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Select a job")
-                    .foregroundStyle(.secondary)
-                    .help("Event date comes from the job — pick or add one above.")
+                    .foregroundStyle(.red)
             }
         }
     }
 
-    private func field(_ title: String, prompt: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextField(prompt, text: text, axis: .vertical)
-                .lineLimit(2, reservesSpace: true)
-        }
+    private func noteField(prompt: String, text: Binding<String>) -> some View {
+        TextField(prompt, text: text, axis: .vertical)
+            .lineLimit(2, reservesSpace: true)
     }
 
     private var footer: some View {
@@ -233,10 +273,10 @@ struct NewQuoteSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
             Button("Save Draft") { save(markSent: false) }
-                .disabled(!draft.canSave)
+                .disabled(!draft.canSave || numberTaken)
             Button("Save & Mark Sent") { save(markSent: true) }
                 .buttonStyle(.borderedProminent)
-                .disabled(!draft.canSave)
+                .disabled(!draft.canSave || numberTaken)
                 .keyboardShortcut(.defaultAction)
         }
     }

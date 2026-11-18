@@ -181,6 +181,7 @@ enum BackupExport {
             closing: invoice.closing,
             submittedAt: invoice.submittedAt,
             isImported: invoice.isImported,
+            payToken: invoice.payToken.isEmpty ? nil : invoice.payToken,
             contactID: link(invoice.contact?.archiveID),
             jobID: link(invoice.job?.archiveID),
             studioID: link(invoice.studio?.archiveID),
@@ -220,7 +221,8 @@ enum BackupExport {
             shootqID: blank(receipt.shootqID),
             paidAt: receipt.paidAt,
             amount: BackupMoney.text(receipt.amount),
-            method: receipt.methodRaw
+            method: receipt.methodRaw,
+            processorTransactionID: receipt.processorTransactionID.isEmpty ? nil : receipt.processorTransactionID
         )
     }
 

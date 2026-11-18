@@ -24,6 +24,7 @@ struct InvoiceDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: StudioDesign.Spacing.section) {
                 header
+                InvoicePayLinkSection(invoice: invoice)
                 billTo
                 lines
                 if !invoice.schedule.isEmpty { schedule }
@@ -135,11 +136,11 @@ struct InvoiceDetailView: View {
                 Text(StudioMoney.string(invoice.balance))
                     .font(StudioDesign.metric(28))
                     .monospacedDigit()
-                Text("Balance")
+                Text("Balance:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let due = invoice.dueSummary {
-                    Text("Due \(due)")
+                    Text("Due: \(due)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.trailing)
@@ -150,7 +151,7 @@ struct InvoiceDetailView: View {
 
     private var billTo: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Bill to")
+            Text("Bill to:")
                 .font(.headline)
             Text(invoice.clientName)
             if let email = invoice.contact?.email, !email.isEmpty {
@@ -160,13 +161,13 @@ struct InvoiceDetailView: View {
                 Text(job.displayName).foregroundStyle(.secondary)
             }
             HStack {
-                labeled("Invoice", StudioDay.string(invoice.invoiceDate))
-                labeled("Due", invoice.dueSummary ?? StudioDay.string(invoice.dueDate))
+                labeled("Invoice:", StudioDay.string(invoice.invoiceDate))
+                labeled("Due:", invoice.dueSummary ?? StudioDay.string(invoice.dueDate))
                 if let paid = invoice.paidDate {
-                    labeled("Paid", StudioDay.string(paid))
+                    labeled("Paid:", StudioDay.string(paid))
                 }
                 if let submitted = invoice.submittedAt {
-                    labeled("Submitted", StudioStamp.string(submitted))
+                    labeled("Submitted:", StudioStamp.string(submitted))
                 }
             }
         }
@@ -204,10 +205,15 @@ struct InvoiceDetailView: View {
                 }
             }
             Divider()
-            totalRow("Tax", invoice.tax)
-            totalRow("Total", invoice.total)
-            totalRow("Paid", invoice.amountPaid)
-            totalRow("Balance", invoice.balance, emphasis: true)
+            HStack {
+                Spacer()
+                Grid(alignment: .trailingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
+                    totalRow("Tax", invoice.tax)
+                    totalRow("Total", invoice.total)
+                    totalRow("Paid", invoice.amountPaid)
+                    totalRow("Balance", invoice.balance, emphasis: true)
+                }
+            }
         }
         .padding(StudioDesign.Spacing.card)
         .paperCard()
@@ -326,10 +332,9 @@ struct InvoiceDetailView: View {
     }
 
     private func totalRow(_ title: String, _ amount: Decimal, emphasis: Bool = false) -> some View {
-        HStack {
-            Text(title)
+        GridRow {
+            Text(title + ":")
                 .foregroundStyle(emphasis ? .primary : .secondary)
-            Spacer()
             Text(StudioMoney.string(amount))
                 .font(emphasis ? StudioDesign.metric(18) : .body)
                 .monospacedDigit()

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -40,6 +41,8 @@ struct QuoteWorkspace: View {
     @State private var editingQuote: Quote?
     @State private var editingAgreement: Quote?
     @State private var mailNote: String?
+    @State private var shareItem: QuoteShare?
+    @State private var sendChoice: QuoteShare?
     @State private var convertError: String?
     @State private var deleteTarget: Quote?
     @State private var evidenceImporter = false
@@ -94,6 +97,36 @@ struct QuoteWorkspace: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(StudioSceneBackground())
+        }
+        .background(QuoteSharePicker(share: shareItem) { share, didShare in
+            shareItem = nil
+            if didShare { markSent(share.quote) }
+        })
+        .confirmationDialog(
+            "Send quote",
+            isPresented: sendChoicePresented,
+            titleVisibility: .visible,
+            presenting: sendChoice
+        ) { share in
+            Button("Email…") {
+                switch QuoteComposer.email(share) {
+                case .composed:
+                    break
+                case .attachedInApp(let app):
+                    let to = share.recipients.joined(separator: ", ")
+                    mailNote = "\(app) opened a new email with the PDF attached. Add the recipient (\(to.isEmpty ? "the client" : to)) and the subject “\(share.subject)”, then paste the message, which is copied."
+                case .manualAttach:
+                    mailNote = "Your default mail app is web mail, which can’t attach files by itself. The PDF is shown in Finder and copied: drag it into the new email, or paste it."
+                }
+                markSent(share.quote)
+            }
+            Button("Share…") { shareItem = share }
+            Button("Show PDF in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([share.pdfURL])
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { share in
+            Text("Quote \(share.quote.displayNumber) is ready as a PDF.")
         }
         .sheet(isPresented: $showNewQuote) {
             NewQuoteSheet()
@@ -168,6 +201,10 @@ struct QuoteWorkspace: View {
         }
     }
 
+    private var sendChoicePresented: Binding<Bool> {
+        Binding(get: { sendChoice != nil }, set: { if !$0 { sendChoice = nil } })
+    }
+
     private var mailPresented: Binding<Bool> {
         Binding(get: { mailNote != nil }, set: { if !$0 { mailNote = nil } })
     }
@@ -189,7 +226,7 @@ struct QuoteWorkspace: View {
 
     private var quoteList: some View {
         VStack(spacing: 0) {
-            Picker("Scope", selection: $scope) {
+            Picker("Scope:", selection: $scope) {
                 ForEach(QuoteScope.allCases) { item in
                     Text(item.title).tag(item)
                 }
@@ -217,24 +254,31 @@ struct QuoteWorkspace: View {
             mailNote = "Fill the Ask fields on this quote’s agreement before emailing."
             return
         }
-        if quote.status == .draft {
-            do {
-                if quote.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    quote.number = QuoteMath.nextNumber(among: quotes.map(\.number))
-                }
-                quote.status = .sent
-                quote.sentAt = quote.sentAt ?? .now
+        do {
+            if quote.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                quote.number = QuoteMath.nextNumber(among: quotes.map(\.number))
                 try modelContext.save()
-            } catch {
-                mailNote = error.localizedDescription
-                return
             }
+        } catch {
+            mailNote = error.localizedDescription
+            return
         }
-        switch QuoteComposer.compose(quote) {
-        case .composed:
-            break
-        case .unavailable:
-            mailNote = "Mail isn’t available. Preview the PDF and send it yourself."
+        guard let share = QuoteComposer.prepare(quote) else {
+            mailNote = "Couldn’t create the quote PDF. Preview the PDF and save it to send yourself."
+            return
+        }
+        sendChoice = share
+    }
+
+    /// Marks a draft as sent only once the user has actually picked a way to share it.
+    private func markSent(_ quote: Quote) {
+        guard quote.status == .draft else { return }
+        quote.status = .sent
+        quote.sentAt = quote.sentAt ?? .now
+        do {
+            try modelContext.save()
+        } catch {
+            mailNote = error.localizedDescription
         }
     }
 

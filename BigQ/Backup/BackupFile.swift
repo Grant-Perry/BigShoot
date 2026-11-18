@@ -165,6 +165,7 @@ struct BackupFile: Codable, Sendable, Equatable {
         var closing: String
         var submittedAt: Date?
         var isImported: Bool
+        var payToken: String? = nil
         var contactID: String?
         var jobID: String?
         var studioID: String?
@@ -199,6 +200,7 @@ struct BackupFile: Codable, Sendable, Equatable {
         var paidAt: Date
         var amount: String
         var method: String
+        var processorTransactionID: String? = nil
     }
 
     struct Quote: Codable, Sendable, Equatable {

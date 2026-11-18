@@ -11,6 +11,13 @@ enum InvoicePDFRenderer {
     private static let gold = NSColor(calibratedRed: 0.80, green: 0.65, blue: 0.35, alpha: 1)
     private static let hairline = NSColor(calibratedWhite: 0.76, alpha: 1)
 
+    /// One payment in a schedule printed under the totals (quotes only).
+    struct ScheduleRow {
+        var label: String
+        var due: String
+        var amount: String
+    }
+
     static func render(_ invoice: Invoice) -> Data {
         render(invoice, documentTitle: "Invoice", dateLabel: "Invoice date", dueLabel: "Due")
     }
@@ -19,7 +26,9 @@ enum InvoicePDFRenderer {
         _ invoice: Invoice,
         documentTitle: String,
         dateLabel: String,
-        dueLabel: String
+        dueLabel: String,
+        numberSize: CGFloat = 24,
+        schedule: [ScheduleRow] = []
     ) -> Data {
         let data = NSMutableData()
         guard let consumer = CGDataConsumer(data: data as CFMutableData) else { return Data() }
@@ -31,6 +40,8 @@ enum InvoicePDFRenderer {
             documentTitle: documentTitle,
             dateLabel: dateLabel,
             dueLabel: dueLabel,
+            numberSize: numberSize,
+            schedule: schedule,
             in: context,
             media: media
         )
@@ -44,6 +55,8 @@ enum InvoicePDFRenderer {
         documentTitle: String,
         dateLabel: String,
         dueLabel: String,
+        numberSize: CGFloat,
+        schedule: [ScheduleRow],
         in context: CGContext,
         media: CGRect
     ) {
@@ -55,6 +68,7 @@ enum InvoicePDFRenderer {
             documentTitle: documentTitle,
             contentWidth: contentWidth,
             right: right,
+            numberSize: numberSize,
             context: context
         )
 
@@ -72,7 +86,45 @@ enum InvoicePDFRenderer {
         )
         y += 22
         y = drawTable(invoice, top: y, right: right, labels: labels, context: context)
+        if !schedule.isEmpty {
+            drawSchedule(schedule, top: y + 28, right: right, context: context)
+        }
         drawFooter(invoice, context: context)
+    }
+
+    /// Payment schedule under the totals, as a compact block centered on the page.
+    /// Labels end in ":" and share one colon edge; the date and amount sit close after them.
+    private static func drawSchedule(_ rows: [ScheduleRow], top: CGFloat, right: CGFloat, context: CGContext) {
+        let headerFont = sans(9, weight: .semibold)
+        let bodyFont = sans(11)
+        let amountFont = figures(11, weight: .semibold)
+        let labels = rows.map { $0.label.hasSuffix(":") ? $0.label : $0.label + ":" }
+        let labelWidth = ceil(labels.map { measure($0, font: bodyFont) }.max() ?? 0) + 2
+        let dueWidth = ceil(rows.map { measure($0.due, font: bodyFont) }.max() ?? 0) + 2
+        let amountWidth = ceil(rows.map { measure($0.amount, font: amountFont) }.max() ?? 0) + 2
+        let dueGap: CGFloat = dueWidth > 2 ? 12 : 0
+        let amountGap: CGFloat = 28
+        let headerWidth = ceil(measure("Payment schedule", font: headerFont)) + 4
+        let blockWidth = max(labelWidth + dueGap + dueWidth + amountGap + amountWidth, headerWidth)
+        let left = margin + ((right - margin) - blockWidth) / 2
+        let dueX = left + labelWidth + dueGap
+        let amountX = left + blockWidth - amountWidth
+
+        var y = top
+        paint("Payment schedule", x: left, top: y, width: blockWidth, font: headerFont, color: mute, kern: 0.4, context: context)
+        y += lineBox(headerFont) + 4
+        rule(x: left, y: y, width: blockWidth, weight: 0.4, color: hairline, context: context)
+        y += 9
+
+        let box = lineBox(bodyFont)
+        let footerTop = pageSize.height - 110
+        for (row, label) in zip(rows, labels) {
+            if y + box > footerTop { break }
+            paint(label, x: left, top: y, width: labelWidth, font: bodyFont, color: ink, alignment: .right, context: context)
+            paint(row.due, x: dueX, top: y, width: dueWidth, font: bodyFont, color: mute, context: context)
+            paint(row.amount, x: amountX, top: y, width: amountWidth, font: amountFont, color: ink, alignment: .right, context: context)
+            y += box + 7
+        }
     }
 
     private static func drawFooter(_ invoice: Invoice, context: CGContext) {
@@ -105,13 +157,14 @@ enum InvoicePDFRenderer {
         documentTitle: String,
         contentWidth: CGFloat,
         right: CGFloat,
+        numberSize: CGFloat,
         context: CGContext
     ) -> CGFloat {
         let numberColumn: CGFloat = 156
         let nameWidth = contentWidth - numberColumn - 24
         let studioName = invoice.studio?.displayName ?? "Studio"
         let nameFont = display(fitting: studioName, width: nameWidth, size: 26, floor: 18)
-        let numberFont = display(24)
+        let numberFont = display(fitting: invoice.displayNumber, width: numberColumn, size: numberSize, floor: 10)
         let kickerFont = sans(9, weight: .semibold)
         let nameBox = lineBox(nameFont)
         let numberBox = lineBox(numberFont)
@@ -272,7 +325,17 @@ enum InvoicePDFRenderer {
         let labelTop = y + (box - lineBox(fieldLabel)) / 2
         paint("Balance:", x: labels.colonX - labels.labelWidth, top: labelTop, width: labels.labelWidth, font: fieldLabel, color: mute, alignment: .right, context: context)
         paint(StudioMoney.string(invoice.balance), x: labels.valueRight - labels.valueWidth, top: y, width: labels.valueWidth, font: dueFont, color: ink, alignment: .right, context: context)
-        return y + box
+        y += box
+        let token = invoice.payToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if invoice.balance > 0, !token.isEmpty {
+            y += 14
+            let linkFont = sans(8)
+            let url = "https://bigq-pay.web.app/pay/\(token)"
+            paint("Pay online:", x: margin, top: y, width: 70, font: fieldLabel, color: mute, context: context)
+            paint(url, x: margin + 74, top: y, width: pageSize.width - margin - 74 - margin, font: linkFont, color: ink, context: context)
+            y += lineBox(linkFont)
+        }
+        return y
     }
 
     /// Field labels share one font so every colon lands on the same edge.

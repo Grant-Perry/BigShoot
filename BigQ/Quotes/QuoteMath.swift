@@ -6,6 +6,18 @@ nonisolated enum QuoteMath {
         return String(highest + 1)
     }
 
+    /// Letters, digits, "-" and "_" — what a typed quote number may contain.
+    static func sanitizedNumber(_ raw: String) -> String {
+        String(raw.filter { ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "-" || $0 == "_" })
+    }
+
+    /// True when `number` matches any of the other quotes' numbers (case-insensitive). Blank never conflicts.
+    static func isNumberTaken(_ number: String, among others: [String]) -> Bool {
+        let wanted = number.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !wanted.isEmpty else { return false }
+        return others.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == wanted }
+    }
+
     static func recalculate(_ quote: Quote) {
         let subtotal = quote.lines.reduce(Decimal.zero) { partial, line in
             partial + line.lineTotal

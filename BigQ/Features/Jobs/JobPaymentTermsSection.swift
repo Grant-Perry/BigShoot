@@ -26,10 +26,14 @@ struct JobPaymentTermsSection: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             case .scheduled, .custom:
-                ForEach(displayTerms) { term in
-                    Text(QuotePaymentSchedule.summaryLine(term))
-                        .font(.callout)
+                StudioLabeledStack {
+                    ForEach(Array(displayTerms.enumerated()), id: \.element.id) { index, term in
+                        StudioLabeledRow(QuotePaymentSchedule.summaryLabel(term, index: index)) {
+                            Text(QuotePaymentSchedule.summaryValue(term))
+                        }
+                    }
                 }
+                .font(.callout)
                 completenessBadge
             }
         }

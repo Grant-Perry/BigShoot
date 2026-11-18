@@ -17,12 +17,12 @@ struct StudioBrandDetailView: View {
             VStack(alignment: .leading, spacing: StudioDesign.Spacing.section) {
                 StudioBrandIdentityHeader(studio: studio, roleLine: roleLine)
 
-                VStack(alignment: .leading, spacing: 12) {
+                StudioLabeledStack {
                     field("Name", text: $name, prompt: "Studio name")
                     field("Email", text: $email, prompt: "grant@grantdeb.com")
                     field("Phone", text: $phone, prompt: "Add a phone number")
                     addressField
-                    detailRow("Invoices", "\(studio.invoices.count)")
+                    StudioLabeledRow("Invoices") { Text("\(studio.invoices.count)") }
                 }
                 .padding(StudioDesign.Spacing.card)
                 .paperCard()
@@ -78,10 +78,7 @@ struct StudioBrandDetailView: View {
     }
 
     private func field(_ title: String, text: Binding<String>, prompt: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .frame(width: 110, alignment: .leading)
-                .foregroundStyle(.secondary)
+        StudioLabeledRow(title) {
             TextField(title, text: text, prompt: Text(prompt))
                 .textFieldStyle(.roundedBorder)
         }
@@ -89,11 +86,7 @@ struct StudioBrandDetailView: View {
 
     /// Return inserts a line break here. A text field would treat it as done.
     private var addressField: some View {
-        HStack(alignment: .top) {
-            Text("Address")
-                .frame(width: 110, alignment: .leading)
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
+        StudioLabeledRow("Address") {
             TextEditor(text: $address)
                 .font(.body)
                 .frame(minHeight: 72)
@@ -116,15 +109,10 @@ struct StudioBrandDetailView: View {
                             .allowsHitTesting(false)
                     }
                 }
-        }
-    }
-
-    private func detailRow(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title)
-                .frame(width: 110, alignment: .leading)
-                .foregroundStyle(.secondary)
-            Text(value.isEmpty ? "—" : value)
+                // The editor has no text baseline; pin the label to its first line.
+                .alignmentGuide(.firstTextBaseline) { d in
+                    d[.top] + 8 + NSFont.preferredFont(forTextStyle: .body).ascender
+                }
         }
     }
 

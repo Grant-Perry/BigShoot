@@ -177,7 +177,7 @@ struct InvoiceWorkspace: View {
     }
 
     private var scopePicker: some View {
-        Picker("Show", selection: $scope) {
+        Picker("Show:", selection: $scope) {
             ForEach(InvoiceScope.allCases) { item in
                 Text(item.title).tag(item)
             }

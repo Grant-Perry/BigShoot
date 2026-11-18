@@ -21,10 +21,14 @@ struct QuotePaymentTermsSection: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             case .scheduled, .custom:
-                ForEach(draft.paymentTerms) { term in
-                    Text(QuotePaymentSchedule.summaryLine(term))
-                        .font(.callout)
+                StudioLabeledStack {
+                    ForEach(Array(draft.paymentTerms.enumerated()), id: \.element.id) { index, term in
+                        StudioLabeledRow(QuotePaymentSchedule.summaryLabel(term, index: index)) {
+                            Text(QuotePaymentSchedule.summaryValue(term))
+                        }
+                    }
                 }
+                .font(.callout)
                 completenessBadge
             }
         }
@@ -190,7 +194,7 @@ struct PaymentScheduleSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Stepper("Payments: \(scheduledCount)", value: $scheduledCount, in: 1...24)
-                DatePicker("Start", selection: $scheduledStart, displayedComponents: .date)
+                DatePicker("Start:", selection: $scheduledStart, displayedComponents: .date)
             }
             Button("Generate equal payments") {
                 scheduleMode = .scheduled
@@ -236,7 +240,7 @@ struct PaymentScheduleSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(term.title.isEmpty ? "Untitled" : term.title)
-                        Text(QuotePaymentSchedule.summaryLine(term))
+                        Text(QuotePaymentSchedule.summaryValue(term))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -317,54 +321,73 @@ private struct CustomPaymentTermEditor: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Payment")
                 .font(StudioDesign.displayTitle)
-            TextField("Schedule title", text: $term.title)
-            Picker("Calculation", selection: $term.amountMode) {
-                Text(QuotePaymentAmountMode.percentOfTotal.title).tag(QuotePaymentAmountMode.percentOfTotal)
-                Text(QuotePaymentAmountMode.remainingBalance.title).tag(QuotePaymentAmountMode.remainingBalance)
-                Text(QuotePaymentAmountMode.fixedAmount.title).tag(QuotePaymentAmountMode.fixedAmount)
-            }
-            .onChange(of: term.amountMode) { _, mode in
-                if mode == .equalShare { term.amountMode = .percentOfTotal }
-            }
-            if term.amountMode == .percentOfTotal {
-                HStack {
-                    TextField("Percent", value: $term.percent, format: .number)
-                        .frame(width: 80)
-                    Text("% of total (\(StudioMoney.string(total)))")
-                        .foregroundStyle(.secondary)
+            StudioLabeledStack {
+                StudioLabeledRow("Title") {
+                    TextField("Schedule title", text: $term.title)
                 }
-            }
-            if term.amountMode == .fixedAmount {
-                TextField("Amount", value: $term.fixedAmount, format: .currency(code: "USD"))
-                    .frame(width: 140)
-            }
-            Picker("Due", selection: $term.dueMode) {
-                ForEach(QuotePaymentDueMode.allCases, id: \.self) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-            if term.dueMode == .daysBeforeEvent {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    TextField("Days", value: $term.daysBeforeEvent, format: .number)
-                        .frame(width: 80)
-                    Text("days before event")
-                        .foregroundStyle(.secondary)
-                    if let due = QuotePaymentSchedule.resolveDue(
-                        term,
-                        signatureDate: nil,
-                        eventDate: eventDate
-                    ) {
-                        Text("· \(StudioDay.string(due))")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("· Set event date on the job to preview")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                StudioLabeledRow("Calculation") {
+                    Picker("Calculation", selection: $term.amountMode) {
+                        Text(QuotePaymentAmountMode.percentOfTotal.title).tag(QuotePaymentAmountMode.percentOfTotal)
+                        Text(QuotePaymentAmountMode.remainingBalance.title).tag(QuotePaymentAmountMode.remainingBalance)
+                        Text(QuotePaymentAmountMode.fixedAmount.title).tag(QuotePaymentAmountMode.fixedAmount)
+                    }
+                    .labelsHidden()
+                    .onChange(of: term.amountMode) { _, mode in
+                        if mode == .equalShare { term.amountMode = .percentOfTotal }
                     }
                 }
-            }
-            if term.dueMode == .fixedDate {
-                DatePicker("Date", selection: $term.fixedDueDate, displayedComponents: .date)
+                if term.amountMode == .percentOfTotal {
+                    StudioLabeledRow("Percent") {
+                        HStack {
+                            TextField("Percent", value: $term.percent, format: .number)
+                                .frame(width: 80)
+                            Text("% of total (\(StudioMoney.string(total)))")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if term.amountMode == .fixedAmount {
+                    StudioLabeledRow("Amount") {
+                        TextField("Amount", value: $term.fixedAmount, format: .currency(code: "USD"))
+                            .frame(width: 140)
+                    }
+                }
+                StudioLabeledRow("Due") {
+                    Picker("Due", selection: $term.dueMode) {
+                        ForEach(QuotePaymentDueMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                }
+                if term.dueMode == .daysBeforeEvent {
+                    StudioLabeledRow("Days") {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            TextField("Days", value: $term.daysBeforeEvent, format: .number)
+                                .frame(width: 80)
+                            Text("days before event")
+                                .foregroundStyle(.secondary)
+                            if let due = QuotePaymentSchedule.resolveDue(
+                                term,
+                                signatureDate: nil,
+                                eventDate: eventDate
+                            ) {
+                                Text("· \(StudioDay.string(due))")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("· Set event date on the job to preview")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+                if term.dueMode == .fixedDate {
+                    StudioLabeledRow("Date") {
+                        DatePicker("Date", selection: $term.fixedDueDate, displayedComponents: .date)
+                            .labelsHidden()
+                    }
+                }
             }
             HStack {
                 Spacer()

@@ -116,7 +116,8 @@ enum AgreementPDFLayout {
 
     static func colonColumn(for labels: [String], font: NSFont, margin: CGFloat) -> (colonX: CGFloat, labelWidth: CGFloat) {
         let widths = labels.map { measure("\($0):", font: font) }
-        let labelWidth = ceil(widths.max() ?? 72)
+        // +2pt slack so CoreText never wraps the trailing colon.
+        let labelWidth = ceil(widths.max() ?? 72) + 2
         return (margin + labelWidth, labelWidth)
     }
 

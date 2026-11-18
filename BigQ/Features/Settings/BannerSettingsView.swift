@@ -14,11 +14,8 @@ struct BannerSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Banner Text")
-                            .frame(width: 120, alignment: .leading)
-                            .foregroundStyle(.secondary)
+                StudioLabeledStack {
+                    StudioLabeledRow("Banner Text") {
                         TextField("Banner Text", text: $bannerText, prompt: Text(StudioBanner.fallback))
                             .textFieldStyle(.roundedBorder)
                     }

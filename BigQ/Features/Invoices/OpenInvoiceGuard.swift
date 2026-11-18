@@ -23,11 +23,17 @@ struct OpenInvoiceGuard: View {
                     }
                     Text(invoice.displayNumber)
                         .font(.headline)
-                    Text("Due \(StudioDay.string(invoice.dueDate))")
-                        .foregroundStyle(.secondary)
-                    Text("\(StudioMoney.string(invoice.balance)) balance")
-                        .font(StudioDesign.metric(16))
-                        .monospacedDigit()
+                    StudioLabeledStack {
+                        StudioLabeledRow("Due") {
+                            Text(StudioDay.string(invoice.dueDate))
+                                .foregroundStyle(.secondary)
+                        }
+                        StudioLabeledRow("Balance") {
+                            Text(StudioMoney.string(invoice.balance))
+                                .font(StudioDesign.metric(16))
+                                .monospacedDigit()
+                        }
+                    }
                     openButton(invoice, isDefault: index == 0)
                 }
             }

@@ -33,10 +33,10 @@ struct StudioBrandEditorSheet: View {
             Text(mode.studio == nil ? "New studio" : "Edit studio")
                 .font(StudioDesign.displayTitle)
             Form {
-                TextField("Studio name", text: $name)
-                TextField("Email", text: $email)
-                TextField("Phone", text: $phone)
-                LabeledContent("Address") {
+                TextField("Studio name:", text: $name)
+                TextField("Email:", text: $email)
+                TextField("Phone:", text: $phone)
+                LabeledContent("Address:") {
                     TextEditor(text: $address)
                         .font(.body)
                         .frame(minHeight: 72)

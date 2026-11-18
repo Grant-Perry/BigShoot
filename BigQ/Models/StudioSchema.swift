@@ -141,6 +141,18 @@ enum StudioSchemaV12: VersionedSchema {
     }
 }
 
+/// Card-pay link on an invoice, and the processor id on a receipt.
+/// Opened directly so the new columns migrate in place.
+enum StudioSchemaV13: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(13, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV12.models
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

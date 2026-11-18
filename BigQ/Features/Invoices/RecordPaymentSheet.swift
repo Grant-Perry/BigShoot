@@ -27,18 +27,29 @@ struct RecordPaymentSheet: View {
                 .font(StudioDesign.displayTitle)
             Text("\(invoice.displayNumber) · \(invoice.clientName)")
                 .foregroundStyle(.secondary)
-            Text("Balance \(StudioMoney.string(invoice.balance))")
+            Text("Balance: \(StudioMoney.string(invoice.balance))")
                 .font(StudioDesign.metric(22))
                 .monospacedDigit()
-            TextField("Amount", value: $amount, format: .number.precision(.fractionLength(2)))
-            DatePicker("Paid", selection: $paidAt, displayedComponents: .date)
-            Picker("Method", selection: $methodTag) {
-                ForEach(methods.names, id: \.self) { key in
-                    Text(PaymentMethod.displayTitle(for: key)).tag(MethodMenuTag.method(key))
+            StudioLabeledStack {
+                StudioLabeledRow("Amount") {
+                    TextField("Amount", value: $amount, format: .number.precision(.fractionLength(2)))
+                        .labelsHidden()
                 }
-                Text("Other").tag(MethodMenuTag.other)
+                StudioLabeledRow("Paid") {
+                    DatePicker("Paid", selection: $paidAt, displayedComponents: .date)
+                        .labelsHidden()
+                }
+                StudioLabeledRow("Method") {
+                    Picker("Method", selection: $methodTag) {
+                        ForEach(methods.names, id: \.self) { key in
+                            Text(PaymentMethod.displayTitle(for: key)).tag(MethodMenuTag.method(key))
+                        }
+                        Text("Other").tag(MethodMenuTag.other)
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
             }
-            .pickerStyle(.menu)
             .onChange(of: methodTag) { _, tag in
                 handleMethodTag(tag)
             }
@@ -99,24 +110,16 @@ struct RecordPaymentSheet: View {
     }
 
     private func save() {
-        let receipt = PaymentReceipt(paidAt: paidAt, amount: amount)
-        receipt.methodRaw = methodKey
-        receipt.invoice = invoice
-        modelContext.insert(receipt)
-        BooksTrail.notePayment(
-            invoice,
-            amount: amount,
-            methodName: PaymentMethod.displayTitle(for: methodKey),
-            in: modelContext
-        )
-        invoice.amountPaid += amount
-        invoice.balance = invoice.total - invoice.amountPaid
-        if invoice.status == .draft {
-            invoice.status = .pending
-        }
-        InvoiceMath.applyDerivedStatus(invoice, now: paidAt)
         do {
-            try modelContext.save()
+            try PayLedger.apply(
+                amount: amount,
+                paidAt: paidAt,
+                methodKey: methodKey,
+                methodName: PaymentMethod.displayTitle(for: methodKey),
+                transactionID: "",
+                to: invoice,
+                in: modelContext
+            )
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
