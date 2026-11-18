@@ -96,7 +96,13 @@ enum QuoteComposer {
     }
 
     /// Client-facing email text. With an agreement it walks the client through signing and returning it.
-    private static func instructions(for quote: Quote, clientName: String, studioName: String, letterhead: String) -> String {
+    private static func instructions(
+        for quote: Quote,
+        clientName: String,
+        studioName: String,
+        letterhead: String,
+        payURL: String
+    ) -> String {
         let job = quote.job?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let forJob = job.isEmpty ? "" : " for \(job)"
         let greeting = clientName.isEmpty ? "Hello," : "Hello \(clientName),"
@@ -107,7 +113,7 @@ enum QuoteComposer {
 
             Thank you for considering \(studioName). Attached is quote \(quote.displayNumber)\(forJob).
 
-            Please look it over and reply to this email with any questions, or let us know you'd like to book and we'll send the agreement.
+            \(payOffer(payURL, due: StudioMoney.string(PayLinkAmount.forQuote(quote)), afterSigning: false))
 
             \(letterhead)
             """
@@ -125,11 +131,29 @@ enum QuoteComposer {
         3. On the last page, type your full name in the Client signature box and today's date in the Date box. You can also print, sign by hand, and scan it.
         4. Save the PDF and reply to this email with the signed copy attached.
 
-        Once we receive the signed agreement, we'll send your first invoice for the payment due at signing. Your date is reserved once that payment is received.
+        \(payOffer(payURL, due: StudioMoney.string(PayLinkAmount.forQuote(quote)), afterSigning: true))
 
         If you have any questions, just reply to this email.
 
         \(letterhead)
+        """
+    }
+
+    private static func payOffer(_ payURL: String, due: String, afterSigning: Bool) -> String {
+        guard !payURL.isEmpty else {
+            return afterSigning
+                ? "Once we receive the signed agreement, we'll send your first invoice for the payment due at signing. Your date is reserved once that payment is received."
+                : "Please look it over and reply to this email with any questions, or let us know you'd like to book and we'll send the agreement."
+        }
+        let lead = afterSigning
+            ? "Once you have signed, pay \(due) here. You can pay that amount or a smaller one:"
+            : "When you're ready to book, pay \(due) here. You can pay that amount or a smaller one:"
+        return """
+        \(lead)
+
+        \(payURL)
+
+        Your date is reserved once that payment is received.
         """
     }
 
@@ -154,7 +178,15 @@ enum QuoteComposer {
             let trimmed = email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return trimmed.isEmpty ? nil : trimmed
         }
-        let body = instructions(for: quote, clientName: name, studioName: signedBy, letterhead: letterhead)
+        let body = instructions(
+            for: quote,
+            clientName: name,
+            studioName: signedBy,
+            letterhead: letterhead,
+            payURL: quote.payToken.isEmpty
+                ? ""
+                : PayAPI.liveBase.appendingPathComponent("pay").appendingPathComponent(quote.payToken).absoluteString
+        )
         return QuoteShare(
             quote: quote,
             pdfURL: url,

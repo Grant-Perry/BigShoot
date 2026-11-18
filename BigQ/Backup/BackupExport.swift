@@ -278,6 +278,7 @@ enum BackupExport {
                     amount: BackupMoney.text(term.amount)
                 )
             },
+            payToken: quote.payToken.isEmpty ? nil : quote.payToken,
             lines: quote.sortedLines.map { line in
                 BackupFile.Line(
                     shootqID: nil,

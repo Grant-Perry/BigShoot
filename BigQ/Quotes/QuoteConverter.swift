@@ -54,6 +54,7 @@ enum QuoteConverter {
         invoice.contact = quote.contact
         invoice.job = quote.job
         invoice.studio = quote.studio ?? (try? StudioBrandDirectory.primary(in: context))
+        invoice.payToken = quote.payToken
         let numbers = try context.fetch(FetchDescriptor<Invoice>()).map(\.number)
         invoice.number = InvoiceMath.nextNumber(among: numbers)
 

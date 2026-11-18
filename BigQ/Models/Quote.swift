@@ -27,6 +27,8 @@ final class Quote {
     @Attribute(.externalStorage) var signedEvidenceData: Data?
     /// none | scheduled | custom
     var paymentScheduleModeRaw: String = QuotePaymentScheduleMode.none.rawValue
+    /// Unguessable id of the card-pay link. Empty until a link is created.
+    var payToken: String = ""
     var archiveID: String = ""
 
     var contact: Contact?

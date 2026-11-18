@@ -17,7 +17,7 @@ struct PayLinkTests {
         """.data(using: .utf8)!
         let snapshot = try JSONDecoder().decode(PayLinkSnapshot.self, from: json)
         #expect(snapshot.isPaid)
-        #expect(snapshot.chargedAmount == Decimal(string: "80.00"))
+        #expect(snapshot.recordedPayments.first?.chargedAmount == Decimal(string: "80.00"))
         #expect(snapshot.paidDate != nil)
     }
 

@@ -40,6 +40,9 @@ struct NewInvoiceSheet: View {
                 if let submitted = draft.submittedAt {
                     SubmittedDatePill(date: submitted)
                 }
+                if let existing {
+                    InvoicePayLinkButton(invoice: existing)
+                }
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)

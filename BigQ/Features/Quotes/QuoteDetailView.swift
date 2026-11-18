@@ -96,6 +96,9 @@ struct QuoteDetailView: View {
                 Text(quote.displayNumber)
                     .font(StudioDesign.displayTitle)
                 QuoteStatusBadge(status: quote.status)
+                if quote.total > 0 && quote.status != .void {
+                    QuotePayLinkButton(quote: quote)
+                }
                 Spacer(minLength: 12)
                 Text(StudioMoney.string(quote.total))
                     .font(.title2.monospacedDigit())

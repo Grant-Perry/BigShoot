@@ -285,6 +285,181 @@ struct BackupTests {
         #expect(contracts.first?.html == "<p>Signed terms</p>")
     }
 
+    @Test func quoteRoundTripRestoresThePayLinkAgreementAndTerms() throws {
+        let source = try makeContainer()
+        let context = source.mainContext
+        let when = Date(timeIntervalSince1970: 1_700_000_000)
+        let contact = Contact(fullName: "Ada Lovelace", email: "ada@north.test", createdAt: when)
+        let studio = StudioBrand(name: "North Light", isPrimary: true, createdAt: when)
+        let job = Job(name: "Wedding", eventDate: when, contact: contact)
+        job.paymentScheduleModeRaw = QuotePaymentScheduleMode.scheduled.rawValue
+        let jobTerm = JobPaymentTerm(
+            title: "Retainer",
+            position: 0,
+            amountMode: .percentOfTotal,
+            percent: 50,
+            dueMode: .signature
+        )
+        jobTerm.job = job
+        let catalog = CatalogItem(name: "Album", defaultPrice: 1200, taxable: true)
+        let invoice = Invoice(number: "1042", invoiceDate: when, total: 1200, balance: 1200, billToName: "Ada Lovelace")
+        invoice.payToken = "inv-pay"
+        invoice.contact = contact
+        invoice.job = job
+        invoice.studio = studio
+        let quote = Quote(
+            number: "Q-1042",
+            quoteDate: when,
+            status: .signed,
+            total: 1200,
+            billToName: "Ada Lovelace",
+            note: "Balcony",
+            closing: "With thanks",
+            agreementTitle: "Wedding Agreement",
+            agreementHTML: "<p>Signed terms</p>",
+            sentAt: when,
+            signedAt: when
+        )
+        quote.payToken = "quote-pay"
+        quote.paymentScheduleModeRaw = QuotePaymentScheduleMode.scheduled.rawValue
+        quote.signedEvidenceData = Data("signed-pdf".utf8)
+        quote.contact = contact
+        quote.job = job
+        quote.studio = studio
+        quote.convertedInvoice = invoice
+        let line = QuoteLine(name: "Album", quantity: 1, unitPrice: 1200, taxable: true)
+        line.catalogItem = catalog
+        line.quote = quote
+        let term = QuotePaymentTerm(
+            title: "Retainer",
+            position: 0,
+            amountMode: .percentOfTotal,
+            percent: 50,
+            dueMode: .signature,
+            amount: 600
+        )
+        term.quote = quote
+        for model in [studio, contact, job, jobTerm, catalog, invoice, quote, line, term] as [any PersistentModel] {
+            context.insert(model)
+        }
+        try context.save()
+
+        let folder = temporaryPackage()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let written = try BackupExport.write(context: context, scope: .full, defaults: isolatedDefaults(), to: folder, createdAt: when)
+        #expect(written.counts.quotes == 1)
+        #expect(written.bodiesWritten == 1)
+
+        let destination = try makeContainer()
+        let payload = try BackupPackage.load(at: folder)
+        _ = try BackupRestore.apply(payload, mode: .replace, context: destination.mainContext, defaults: isolatedDefaults())
+
+        let restored = try #require(try destination.mainContext.fetch(FetchDescriptor<Quote>()).first)
+        #expect(restored.number == "Q-1042")
+        #expect(restored.payToken == "quote-pay")
+        #expect(restored.note == "Balcony")
+        #expect(restored.closing == "With thanks")
+        #expect(restored.agreementHTML == "<p>Signed terms</p>")
+        #expect(restored.signedEvidenceData == Data("signed-pdf".utf8))
+        #expect(restored.paymentScheduleModeRaw == QuotePaymentScheduleMode.scheduled.rawValue)
+        #expect(restored.contact?.email == "ada@north.test")
+        #expect(restored.job?.name == "Wedding")
+        #expect(restored.studio?.name == "North Light")
+        #expect(restored.convertedInvoice?.number == "1042")
+        #expect(restored.convertedInvoice?.payToken == "inv-pay")
+        #expect(restored.lines.first?.catalogItem?.name == "Album")
+        #expect(restored.lines.first?.unitPrice == 1200)
+        #expect(restored.paymentTerms.first?.title == "Retainer")
+        #expect(restored.paymentTerms.first?.percent == 50)
+        #expect(restored.paymentTerms.first?.amount == 600)
+        let jobs = try destination.mainContext.fetch(FetchDescriptor<Job>())
+        #expect(jobs.first?.paymentScheduleModeRaw == QuotePaymentScheduleMode.scheduled.rawValue)
+        #expect(jobs.first?.paymentTerms.first?.title == "Retainer")
+        #expect(jobs.first?.paymentTerms.first?.percent == 50)
+    }
+
+    @Test func mergeUpdatesQuotesAndTemplatesThatDoNotShareArchiveIDs() throws {
+        let source = try makeContainer()
+        let sourceContext = source.mainContext
+        let invoice = Invoice(number: "1042", total: 1200, balance: 1200, billToName: "Ada Lovelace")
+        let quote = Quote(number: "Q-9", total: 1200, billToName: "Ada Lovelace", agreementHTML: "<p>Terms</p>")
+        quote.payToken = "quote-pay"
+        quote.convertedInvoice = invoice
+        let template = Contract(title: "Wedding Agreement", html: "<p>Template</p>", isTemplate: true)
+        sourceContext.insert(invoice)
+        sourceContext.insert(quote)
+        sourceContext.insert(template)
+        try sourceContext.save()
+
+        let folder = temporaryPackage()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        _ = try BackupExport.write(context: sourceContext, scope: .full, defaults: isolatedDefaults(), to: folder)
+
+        let destination = try makeContainer()
+        let context = destination.mainContext
+        let localInvoice = Invoice(number: "1042", total: 1, balance: 1)
+        localInvoice.archiveID = "local-invoice"
+        let localQuote = Quote(number: "Q-9", total: 1)
+        localQuote.archiveID = "local-quote"
+        let localTemplate = Contract(title: "Wedding Agreement", html: "old", isTemplate: true)
+        localTemplate.archiveID = "local-template"
+        let kept = Quote(number: "LOCAL", total: 5)
+        context.insert(localInvoice)
+        context.insert(localQuote)
+        context.insert(localTemplate)
+        context.insert(kept)
+        try context.save()
+
+        let payload = try BackupPackage.load(at: folder)
+        _ = try BackupRestore.apply(payload, mode: .merge, context: context, defaults: isolatedDefaults())
+
+        let quotes = try context.fetch(FetchDescriptor<Quote>())
+        #expect(quotes.count == 2)
+        let restored = try #require(quotes.first { $0.number == "Q-9" })
+        #expect(restored.payToken == "quote-pay")
+        #expect(restored.agreementHTML == "<p>Terms</p>")
+        #expect(restored.convertedInvoice?.number == "1042")
+        #expect(restored.convertedInvoice?.archiveID == "local-invoice")
+        #expect(quotes.contains { $0.number == "LOCAL" })
+        let invoices = try context.fetch(FetchDescriptor<Invoice>())
+        #expect(invoices.count == 1)
+        let contracts = try context.fetch(FetchDescriptor<Contract>())
+        #expect(contracts.count == 1)
+        #expect(contracts.first?.html == "<p>Template</p>")
+        #expect(contracts.first?.archiveID == "local-template")
+    }
+
+    @Test func catalogReplaceRelinksQuoteLines() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let catalog = CatalogItem(name: "Album", defaultPrice: 100, detail: "Leather")
+        let quote = Quote(number: "Q-1", total: 100, billToName: "Ada Lovelace")
+        let line = QuoteLine(name: "Album", quantity: 1, unitPrice: 100)
+        line.catalogItem = catalog
+        line.quote = quote
+        context.insert(catalog)
+        context.insert(quote)
+        context.insert(line)
+        try context.save()
+
+        let folder = temporaryPackage()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        _ = try BackupExport.write(context: context, scope: .catalog, defaults: isolatedDefaults(), to: folder)
+        catalog.defaultPrice = 5
+        try context.save()
+
+        let payload = try BackupPackage.load(at: folder)
+        _ = try BackupRestore.apply(payload, mode: .replace, context: context, defaults: isolatedDefaults())
+
+        let quotes = try context.fetch(FetchDescriptor<Quote>())
+        #expect(quotes.count == 1)
+        #expect(quotes.first?.number == "Q-1")
+        let items = try context.fetch(FetchDescriptor<CatalogItem>())
+        #expect(items.count == 1)
+        #expect(items[0].defaultPrice == 100)
+        #expect(quotes.first?.lines.first?.catalogItem?.name == "Album")
+    }
+
     @Test func mergePreferencesKeepLocalLists() throws {
         let defaults = isolatedDefaults()
         defaults.set("North Light", forKey: StudioBanner.key)
@@ -307,7 +482,7 @@ struct BackupTests {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: StudioSchemaV12.self)
+        let schema = Schema(versionedSchema: StudioSchemaV14.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [configuration])
     }

@@ -41,6 +41,7 @@ struct QuoteWorkspace: View {
     @State private var editingQuote: Quote?
     @State private var editingAgreement: Quote?
     @State private var mailNote: String?
+    @State private var quotePayLink = PayLinkModel()
     @State private var shareItem: QuoteShare?
     @State private var sendChoice: QuoteShare?
     @State private var convertError: String?
@@ -253,6 +254,16 @@ struct QuoteWorkspace: View {
         if AgreementAskField.hasUnresolvedAsks(in: quote.agreementHTML) {
             mailNote = "Fill the Ask fields on this quote’s agreement before emailing."
             return
+        }
+        Task { await sendPrepared(quote) }
+    }
+
+    private func sendPrepared(_ quote: Quote) async {
+        if quote.payToken.isEmpty, quote.total > 0 {
+            await quotePayLink.publishQuote(quote, in: modelContext)
+            if quote.payToken.isEmpty {
+                mailNote = quotePayLink.message
+            }
         }
         do {
             if quote.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

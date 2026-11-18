@@ -1,6 +1,26 @@
 import Darwin
 import Foundation
 
+enum PayLinkAmount {
+    /// The next unpaid scheduled amount, or the whole balance when there is no schedule.
+    static func forQuote(_ quote: Quote) -> Decimal {
+        if let due = quote.sortedPaymentTerms.first(where: { $0.amount > 0 })?.amount {
+            return due
+        }
+        return quote.total
+    }
+
+    static func forInvoice(_ invoice: Invoice) -> Decimal {
+        let open = invoice.schedule
+            .filter { $0.balance > 0 }
+            .sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
+        if let due = open.first?.balance, due > 0 {
+            return due
+        }
+        return invoice.balance
+    }
+}
+
 enum PayMoney {
     /// Two-decimal US amount for the pay service. No currency sign, no grouping.
     static func wire(_ value: Decimal) -> String {
@@ -21,6 +41,25 @@ enum PayMoney {
     }
 }
 
+struct PayLinkPayment: Decodable, Equatable, Sendable {
+    var transactionId: String
+    var amount: String
+    var cardLabel: String
+    var paidAt: String
+
+    var chargedAmount: Decimal? { PayMoney.decimal(amount) }
+
+    var paidDate: Date? {
+        guard !paidAt.isEmpty else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: paidAt) { return date }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: paidAt)
+    }
+}
+
 struct PayLinkSnapshot: Decodable, Equatable, Sendable {
     var token: String
     var url: String
@@ -34,10 +73,15 @@ struct PayLinkSnapshot: Decodable, Equatable, Sendable {
     var cardLabel: String
     var paidAt: String
     var failureMessage: String
+    var payments: [PayLinkPayment]?
 
     var isPaid: Bool { status == "paid" }
 
-    var chargedAmount: Decimal? { PayMoney.decimal(amount) }
+    var recordedPayments: [PayLinkPayment] {
+        if let payments, !payments.isEmpty { return payments }
+        guard !transactionId.isEmpty, let parsed = PayMoney.decimal(amount), parsed > 0 else { return [] }
+        return [PayLinkPayment(transactionId: transactionId, amount: amount, cardLabel: cardLabel, paidAt: paidAt)]
+    }
 
     var paidDate: Date? {
         guard !paidAt.isEmpty else { return nil }
@@ -67,15 +111,29 @@ enum PayLinkError: LocalizedError {
     }
 }
 
-/// Reads the studio key from the real home directory. The sandbox allows that one file.
+/// Reads the studio key. The sandbox only allows a few paths under the home folder.
 enum PayStudioKey {
     static func load() -> String? {
-        guard let entry = getpwuid(getuid()), let dir = entry.pointee.pw_dir else { return nil }
-        let url = URL(fileURLWithPath: String(cString: dir))
-            .appendingPathComponent("Xcode/BigQ/.pay-studio-key")
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        for url in candidates {
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
+    }
+
+    private static var candidates: [URL] {
+        var urls = [
+            URL(fileURLWithPath: "/Users/gp./Xcode/BigQ/shootq-export/pay-studio-key"),
+            URL(fileURLWithPath: "/Users/gp./Xcode/BigQ/pay-studio-key"),
+            URL(fileURLWithPath: "/Users/gp./Xcode/BigQ/.pay-studio-key"),
+        ]
+        if let entry = getpwuid(getuid()), let dir = entry.pointee.pw_dir {
+            let home = URL(fileURLWithPath: String(cString: dir), isDirectory: true)
+            urls.append(home.appending(path: "Xcode/BigQ/shootq-export/pay-studio-key", directoryHint: .notDirectory))
+            urls.append(home.appending(path: "Xcode/BigQ/pay-studio-key", directoryHint: .notDirectory))
+        }
+        return urls
     }
 }
 

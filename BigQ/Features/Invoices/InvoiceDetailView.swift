@@ -123,6 +123,7 @@ struct InvoiceDetailView: View {
             Spacer()
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 8) {
+                    InvoicePayLinkButton(invoice: invoice)
                     Button("Preview", systemImage: "doc.richtext", action: onPreview)
                         .buttonStyle(.bordered)
                         .controlSize(.small)

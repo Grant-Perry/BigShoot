@@ -232,6 +232,8 @@ struct BackupFile: Codable, Sendable, Equatable {
         var evidenceFile: String?
         var paymentScheduleMode: String?
         var paymentTerms: [QuotePaymentTerm]?
+        /// Card-pay link. Missing on backups written before quote pay links.
+        var payToken: String? = nil
         var lines: [Line]
     }
 

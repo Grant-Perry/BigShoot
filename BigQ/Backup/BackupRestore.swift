@@ -89,6 +89,11 @@ enum BackupRestore {
             try wipe(StudioBrand.self, context)
         }
         if scope.includesCatalog {
+            if !scope.includesBooks {
+                for line in try context.fetch(FetchDescriptor<QuoteLine>()) {
+                    line.catalogItem = nil
+                }
+            }
             try wipe(CatalogItem.self, context)
             try wipe(TaxSchedule.self, context)
         }
@@ -320,10 +325,10 @@ enum BackupRestore {
         let catalog = try context.fetch(FetchDescriptor<CatalogItem>())
         let grouped = Dictionary(grouping: catalog, by: \.name)
         for line in try context.fetch(FetchDescriptor<InvoiceLine>()) where line.catalogItem == nil {
-            let matches = grouped[line.name] ?? []
-            if matches.count == 1 {
-                line.catalogItem = matches[0]
-            }
+            line.catalogItem = unique(grouped[line.name] ?? [])
+        }
+        for line in try context.fetch(FetchDescriptor<QuoteLine>()) where line.catalogItem == nil {
+            line.catalogItem = unique(grouped[line.name] ?? [])
         }
     }
 
@@ -436,6 +441,50 @@ enum BackupRestore {
         return pending
     }
 
+    private static func naturalQuote(
+        _ record: BackupFile.Quote,
+        locals: [Quote],
+        index: BackupIndex<Quote>
+    ) -> Quote? {
+        let number = record.number.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !number.isEmpty else { return nil }
+        return unique(locals.filter { $0.number == number && !index.isUsed($0) })
+    }
+
+    private static func naturalContract(
+        _ record: BackupFile.Contract,
+        locals: [Contract],
+        jobs: BackupIndex<Job>,
+        index: BackupIndex<Contract>
+    ) -> Contract? {
+        let title = record.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        let template = record.isTemplate ?? false
+        return unique(locals.filter { contract in
+            guard !index.isUsed(contract), contract.isTemplate == template else { return false }
+            guard contract.title.caseInsensitiveCompare(title) == .orderedSame else { return false }
+            return sameLinkedJob(contract.job, record.jobID, jobs: jobs)
+        })
+    }
+
+    private static func sameLinkedJob(_ job: Job?, _ jobID: String?, jobs: BackupIndex<Job>) -> Bool {
+        let filed = jobID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch (job, filed.isEmpty) {
+        case (nil, true):
+            return true
+        case let (linked?, false):
+            return jobs.existing(archiveID: filed, shootqID: nil) === linked
+        default:
+            return false
+        }
+    }
+
+    private static func remember(_ archiveID: String, _ invoice: Invoice, in index: inout [String: Invoice]) {
+        let trimmed = archiveID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        index[trimmed] = invoice
+    }
+
     private static func naturalInvoice(
         _ record: BackupFile.Invoice,
         locals: [Invoice],
@@ -497,6 +546,9 @@ enum BackupRestore {
             let contract: Contract
             let existed: Bool
             if let found = index.existing(archiveID: record.archiveID, shootqID: record.shootqID) {
+                contract = found
+                existed = true
+            } else if let found = naturalContract(record, locals: locals, jobs: jobs, index: index) {
                 contract = found
                 existed = true
             } else {
@@ -605,9 +657,11 @@ enum BackupRestore {
         media: [String: Data],
         context: ModelContext
     ) throws -> [PendingQuote] {
-        let invoiceByArchive = Dictionary(uniqueKeysWithValues: invoices.map {
-            ($0.invoice.archiveID, $0.invoice)
-        })
+        var invoiceByArchive: [String: Invoice] = [:]
+        for item in invoices {
+            remember(item.invoice.archiveID, item.invoice, in: &invoiceByArchive)
+            remember(item.record.archiveID, item.invoice, in: &invoiceByArchive)
+        }
         let locals = try context.fetch(FetchDescriptor<Quote>())
         var index = BackupIndex<Quote>()
         for quote in locals {
@@ -618,6 +672,9 @@ enum BackupRestore {
             let quote: Quote
             let existed: Bool
             if let found = index.existing(archiveID: record.archiveID, shootqID: nil) {
+                quote = found
+                existed = true
+            } else if let found = naturalQuote(record, locals: locals, index: index) {
                 quote = found
                 existed = true
             } else {
@@ -646,6 +703,7 @@ enum BackupRestore {
             quote.signedAt = record.signedAt
             quote.paymentScheduleModeRaw =
                 record.paymentScheduleMode ?? QuotePaymentScheduleMode.none.rawValue
+            quote.payToken = record.payToken ?? ""
             quote.contact = record.contactID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
             quote.job = record.jobID.flatMap { jobs.existing(archiveID: $0, shootqID: nil) }
             quote.studio = record.studioID.flatMap { studios.existing(archiveID: $0, shootqID: nil) }
@@ -657,9 +715,12 @@ enum BackupRestore {
             } else if !existed {
                 quote.agreementHTML = ""
             }
-            if let hash = record.evidenceFile {
-                quote.signedEvidenceData = media[hash]
-            }
+            quote.signedEvidenceData = bytes(
+                record.evidenceFile,
+                media: media,
+                existed: existed,
+                current: quote.signedEvidenceData
+            )
             adopt(
                 fileArchiveID: record.archiveID,
                 fileShootQID: nil,

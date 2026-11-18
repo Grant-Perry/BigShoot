@@ -10,6 +10,12 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+	<array>
+		<string>/Users/gp./Xcode/BigQ/pay-studio-key</string>
+		<string>/Users/gp./Xcode/BigQ/.pay-studio-key</string>
+		<string>/Users/gp./Xcode/BigQ/shootq-export/pay-studio-key</string>
+	</array>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
 		<string>Xcode/BigQ/shootq-export/</string>
@@ -23,6 +29,8 @@
 		<string>Xcode/BigQ/shootq-export/invoice-line-items.csv</string>
 		<string>Xcode/BigQ/shootq-export/invoice-line-items.jsonl</string>
 		<string>Xcode/BigQ/shootq-export/contracts.json</string>
+		<string>Xcode/BigQ/shootq-export/pay-studio-key</string>
+		<string>Xcode/BigQ/pay-studio-key</string>
 		<string>Xcode/BigQ/.pay-studio-key</string>
 	</array>
 </dict>

@@ -41,7 +41,7 @@ enum BackupScope: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .full: nil
         case .books: "The price list stays."
-        case .catalog: "Clients, jobs, invoices, and contracts stay."
+        case .catalog: "Clients, jobs, quotes, invoices, and contracts stay."
         }
     }
 }

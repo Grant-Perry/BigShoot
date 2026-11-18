@@ -153,6 +153,18 @@ enum StudioSchemaV13: VersionedSchema {
     }
 }
 
+/// Card-pay link on a quote.
+/// Opened directly so the new column migrates in place.
+enum StudioSchemaV14: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(14, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV13.models
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

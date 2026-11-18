@@ -17,6 +17,8 @@ struct NewQuoteSheet: View {
     @State private var jobEditor: JobEditorLaunch?
     @State private var contactEditor: ContactEditorMode?
     @State private var previewSession: QuotePreviewSession?
+    @State private var payLink = PayLinkModel()
+    @State private var showPayResult = false
     @State private var includeValidUntil: Bool
 
     init(existing: Quote? = nil) {
@@ -52,6 +54,13 @@ struct NewQuoteSheet: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Create pay link", systemImage: "link") {
+                    Task { await createPayLink() }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(payLink.isWorking)
+                .help("Save this quote and copy a link the client can pay after they sign")
                 Button("Preview", systemImage: "doc.richtext", action: showPreview)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -75,6 +84,11 @@ struct NewQuoteSheet: View {
         .fixedSize(horizontal: false, vertical: true)
         .studioActive()
         .focusedSceneValue(\.invoiceEditorActive, true)
+        .alert("Pay link", isPresented: $showPayResult) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(payLink.message.isEmpty ? "Couldn’t create the pay link." : payLink.message)
+        }
         .sheet(item: $jobEditor) { launch in
             JobEditorSheet(contacts: contacts, contact: draft.pricing.contact, job: launch.job) { saved in
                 draft.pricing.contact = saved.contact ?? draft.pricing.contact
@@ -283,6 +297,16 @@ struct NewQuoteSheet: View {
 
     private func presentJobEditor(_ job: Job?) {
         jobEditor = JobEditorLaunch(job: job)
+    }
+
+    private func createPayLink() async {
+        do {
+            let quote = try draft.save(in: modelContext, markSent: false)
+            await payLink.publishQuote(quote, in: modelContext)
+            showPayResult = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func showPreview() {
