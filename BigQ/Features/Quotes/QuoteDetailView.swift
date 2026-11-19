@@ -84,8 +84,8 @@ struct QuoteDetailView: View {
             }
             if quote.canMarkSigned {
                 ToolbarItem {
-                    Button("Mark Signed", systemImage: "checkmark.seal", action: onMarkSigned)
-                        .help("Convert this quote into an invoice")
+                    Button("Convert to Invoice", systemImage: "checkmark.seal", action: onMarkSigned)
+                        .help("Mark this quote signed and convert it into an invoice")
                 }
             }
             ToolbarItem {

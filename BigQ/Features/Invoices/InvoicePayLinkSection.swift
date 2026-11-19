@@ -46,6 +46,7 @@ final class PayLinkModel {
                     balance: PayMoney.wire(due.balance),
                     schedule: due.later,
                     billToName: invoice.clientName,
+                    clientEmail: invoice.contact?.email ?? invoice.job?.contact?.email ?? "",
                     studioName: invoice.studio?.displayName ?? StudioBrand.defaultName,
                     replace: replace
                 )
@@ -105,7 +106,14 @@ final class PayLinkModel {
         return applied
     }
 
-    func publishQuote(_ quote: Quote, in context: ModelContext, replace: Bool = false, announce: Bool = true) async {
+    /// `clientEmail` is where the receipt goes. It defaults to the quote's contact.
+    func publishQuote(
+        _ quote: Quote,
+        in context: ModelContext,
+        replace: Bool = false,
+        announce: Bool = true,
+        clientEmail: String? = nil
+    ) async {
         page = nil
         let due = PayLinkAmount.forQuote(quote)
         guard due.amount > 0 else {
@@ -121,6 +129,8 @@ final class PayLinkModel {
         defer { isWorking = false }
         let quoteId = ensureArchiveID(on: quote, in: context)
         let previous = quote.payToken
+        let typed = clientEmail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let receiptEmail = typed.isEmpty ? (quote.contact?.email ?? quote.job?.contact?.email ?? "") : typed
         let api = PayAPI(baseURL: PayAPI.liveBase, studioKey: studioKey)
         do {
             let snapshot = try await api.publish(
@@ -131,6 +141,7 @@ final class PayLinkModel {
                 balance: PayMoney.wire(due.balance),
                 schedule: due.later,
                 billToName: quote.clientName,
+                clientEmail: receiptEmail,
                 studioName: quote.studio?.displayName ?? StudioBrand.defaultName,
                 replace: replace
             )

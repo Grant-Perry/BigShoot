@@ -208,6 +208,7 @@ struct PayAPI: Sendable {
         balance: String,
         schedule: [PayLinkInstallment],
         billToName: String,
+        clientEmail: String = "",
         studioName: String,
         replace: Bool = false
     ) async throws -> PayLinkSnapshot {
@@ -225,6 +226,8 @@ struct PayAPI: Sendable {
                 ["label": $0.label, "due": $0.due, "amount": $0.amount]
             }
         }
+        let email = clientEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !email.isEmpty { payload["clientEmail"] = email }
         if replace { payload["replace"] = true }
         return try await send(path: "/api/links", method: "POST", body: payload, authorized: true)
     }

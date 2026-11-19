@@ -56,6 +56,25 @@ struct PayLinkTests {
         #expect(invoice.amountPaid == 80)
     }
 
+    @Test func convertingAQuoteKeepsItsPayLinkIDForTheInvoice() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let quote = Quote(number: "Q-1", status: .sent, total: 500, billToName: "Ada")
+        quote.archiveID = "quote-link-id"
+        quote.payToken = "token-1"
+        context.insert(quote)
+
+        let invoice = try QuoteConverter.convertToInvoice(quote, in: context)
+        #expect(invoice.payToken == "token-1")
+        #expect(invoice.archiveID == "quote-link-id")
+
+        let unlinked = Quote(number: "Q-2", status: .sent, total: 500, billToName: "Bo")
+        unlinked.archiveID = "other-id"
+        context.insert(unlinked)
+        let plain = try QuoteConverter.convertToInvoice(unlinked, in: context)
+        #expect(plain.archiveID != "other-id")
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: StudioSchemaV13.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

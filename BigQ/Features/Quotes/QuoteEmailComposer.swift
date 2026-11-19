@@ -385,9 +385,16 @@ struct QuoteEmailComposer: View {
         guard !isSending else { return }
         isSending = true
         defer { isSending = false }
-        if quote.payToken.isEmpty, quote.total > 0 {
+        if quote.total > 0 {
+            // Publishing again on an existing link just refreshes it, which hands the pay server
+            // the address the receipt should go to.
             let links = PayLinkModel()
-            await links.publishQuote(quote, in: modelContext, announce: false)
+            await links.publishQuote(
+                quote,
+                in: modelContext,
+                announce: false,
+                clientEmail: recipient
+            )
             if quote.payToken.isEmpty {
                 sendError = links.message.isEmpty ? "Couldn’t create the pay link." : links.message
                 return

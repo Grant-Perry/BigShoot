@@ -55,6 +55,12 @@ enum QuoteConverter {
         invoice.job = quote.job
         invoice.studio = quote.studio ?? (try? StudioBrandDirectory.primary(in: context))
         invoice.payToken = quote.payToken
+        // The pay server finds a link by the ID it was published under, which was the quote's.
+        // Sharing it lets a payment made on the quote's link land on this invoice.
+        let quoteLinkID = quote.archiveID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !quote.payToken.isEmpty, !quoteLinkID.isEmpty {
+            invoice.archiveID = quoteLinkID
+        }
         let numbers = try context.fetch(FetchDescriptor<Invoice>()).map(\.number)
         invoice.number = InvoiceMath.nextNumber(among: numbers)
 
