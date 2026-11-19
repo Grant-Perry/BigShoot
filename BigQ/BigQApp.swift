@@ -26,18 +26,22 @@ struct BigQApp: App {
                     NotificationCenter.default.post(name: .bigQNewQuote, object: nil)
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+                .help("New quote")
                 Button("New Invoice") {
                     NotificationCenter.default.post(name: .bigShootNewInvoice, object: nil)
                 }
+                .help("New invoice")
                 Divider()
                 Button("Import ShootQ…") {
                     NotificationCenter.default.post(name: .bigShootImport, object: nil)
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
+                .help("Import a ShootQ export folder")
                 Button("Export Books…") {
                     NotificationCenter.default.post(name: .bigShootExport, object: nil)
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
+                .help("Export the books")
             }
         }
     }

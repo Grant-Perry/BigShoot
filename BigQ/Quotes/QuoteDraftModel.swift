@@ -106,7 +106,7 @@ final class QuoteDraftModel {
             ctx.quoteNumber = number
         }
         ctx.quoteDate = StudioDay.string(pricing.invoiceDate)
-        ctx.validUntil = StudioDay.string(validUntil)
+        ctx.validUntil = AgreementMerge.day(validUntil)
         ctx.subtotal = StudioMoney.string(pricing.subtotal)
         ctx.totalAmount = StudioMoney.string(pricing.total)
         ctx.totalTax = StudioMoney.string(pricing.tax)

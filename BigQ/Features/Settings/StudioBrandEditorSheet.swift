@@ -45,10 +45,12 @@ struct StudioBrandEditorSheet: View {
             .formStyle(.grouped)
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without saving")
                 Spacer()
                 Button("Save", action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(trimmed(name).isEmpty)
+                    .help("Save this studio")
             }
         }
         .padding(24)

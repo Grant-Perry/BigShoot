@@ -19,6 +19,7 @@ struct JobPaymentTermsSection: View {
                     prepareDraftFromJob()
                     showBuilder = true
                 }
+                .help(job.paymentScheduleMode == .none ? "Add a payment schedule" : "Edit the payment schedule")
             }
             switch job.paymentScheduleMode {
             case .none:
@@ -29,7 +30,7 @@ struct JobPaymentTermsSection: View {
                 StudioLabeledStack {
                     ForEach(Array(displayTerms.enumerated()), id: \.element.id) { index, term in
                         StudioLabeledRow(QuotePaymentSchedule.summaryLabel(term, index: index)) {
-                            Text(QuotePaymentSchedule.summaryValue(term))
+                            Text(QuotePaymentSchedule.summaryValue(term, eventDate: job.eventDate))
                         }
                     }
                 }

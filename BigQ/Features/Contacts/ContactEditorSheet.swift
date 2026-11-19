@@ -35,10 +35,12 @@ struct ContactEditorSheet: View {
             .formStyle(.grouped)
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without saving")
                 Spacer()
                 Button("Save") { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(displayName.isEmpty)
+                    .help("Save this contact")
             }
         }
         .padding(24)

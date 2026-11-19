@@ -55,6 +55,7 @@ struct DashboardCollectionChart: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .help("Show invoices paid in this period")
                 .accessibilityHint("Show invoices paid in this period")
                 InvoiceTotalButton(
                     amount: invoicedTotal,

@@ -19,10 +19,12 @@ struct AgreementAskPromptSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without inserting")
                 Button("Insert") { save() }
                     .buttonStyle(.borderedProminent)
                     .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .keyboardShortcut(.defaultAction)
+                    .help("Insert this Ask field")
             }
         }
         .padding(24)
@@ -84,6 +86,7 @@ struct AgreementAskAnswersSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without applying")
                 Button(prompts.isEmpty ? "Done" : "Apply") {
                     onComplete(answers)
                     dismiss()

@@ -65,6 +65,7 @@ struct JobDetailView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .help("Open \(quote.displayNumber)")
                         }
                     }
                 }
@@ -87,6 +88,7 @@ struct JobDetailView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .help("Open \(invoice.displayNumber)")
                         }
                     }
                 }
@@ -99,9 +101,11 @@ struct JobDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit", systemImage: "pencil", action: onEdit)
+                    .help("Edit this job")
             }
             ToolbarItem {
                 Button("Add Contract", systemImage: "signature", action: onAddContract)
+                    .help("Attach an agreement to this job")
             }
         }
         .onAppear(perform: syncTypeTag)
@@ -117,7 +121,9 @@ struct JobDetailView: View {
         .alert("Add Type", isPresented: $showAddType) {
             TextField("Type", text: $newTypeName)
             Button("Add", action: commitNewType)
+                .help("Add this job type")
             Button("Cancel", role: .cancel) { newTypeName = "" }
+                .help("Don’t add a type")
         }
     }
 
@@ -388,10 +394,12 @@ struct JobEditorSheet: View {
             .formStyle(.grouped)
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without saving")
                 Spacer()
                 Button("Save", action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || contact == nil)
+                    .help("Save this job")
             }
         }
         .padding(24)
@@ -405,7 +413,9 @@ struct JobEditorSheet: View {
         .alert("Add Type", isPresented: $showAddType) {
             TextField("Type", text: $newTypeName)
             Button("Add", action: commitNewType)
+                .help("Add this job type")
             Button("Cancel", role: .cancel) { newTypeName = "" }
+                .help("Don’t add a type")
         }
         .onAppear { nameFocused = true }
     }

@@ -41,8 +41,10 @@ struct QuotePDFPreviewSheet: View {
                     .font(StudioDesign.displayTitle)
                 Spacer()
                 Button("Save PDF…", action: save)
+                    .help("Save this PDF")
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                    .help("Close the preview")
             }
             if let note {
                 Text(note)

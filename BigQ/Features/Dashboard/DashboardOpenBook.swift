@@ -36,6 +36,7 @@ struct DashboardOpenBook: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .help("Show open invoices")
             .accessibilityHint("Show open invoices")
             if split.total == 0 {
                 Text(customers.isEmpty ? "Nothing is open." : "No customers selected.")
@@ -122,6 +123,7 @@ struct DashboardOpenBook: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .help(hint(for: kind))
                 .accessibilityHint(hint(for: kind))
             }
         }

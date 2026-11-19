@@ -80,6 +80,7 @@ struct StudioBrandListView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button("Add Studio", systemImage: "plus", action: onAdd)
+                    .help("Add a studio")
             }
         }
         .overlay {

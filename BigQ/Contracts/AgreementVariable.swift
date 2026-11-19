@@ -39,6 +39,13 @@ enum AgreementVariableCatalog {
             .init("Client Company"),
             .init("Client Full Address"),
         ]),
+        AgreementVariableGroup(title: "Couple", variables: [
+            .init("Bride First Name"),
+            .init("Bride Last Name"),
+            .init("Groom First Name"),
+            .init("Groom Last Name"),
+            .init("First+First Couple"),
+        ]),
         AgreementVariableGroup(title: "Job", variables: [
             .init("Job Name"),
             .init("Job Type"),
@@ -61,6 +68,7 @@ enum AgreementVariableCatalog {
             .init("Total Tax"),
             .init("Total Discount"),
             .init("Remaining Balance"),
+            .init("Retainer"),
             AgreementVariable(label: "Terms (payment schedule)", token: "[Terms]"),
             AgreementVariable(
                 label: "Quote Details (packages & contents)",

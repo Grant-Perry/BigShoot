@@ -59,6 +59,7 @@ struct ContactPickerField: View {
             }
         }
         .buttonStyle(.bordered)
+        .help("Choose a contact")
         .accessibilityLabel(fieldLabel)
         .accessibilityValue(title)
     }
@@ -167,6 +168,7 @@ private struct ContactPickerRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .help(name == "Add New" ? "Add a contact" : "Choose \(name)")
         .accessibilityLabel(name)
         .onHover { hovered = $0 }
     }

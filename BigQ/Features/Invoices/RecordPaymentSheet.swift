@@ -56,7 +56,9 @@ struct RecordPaymentSheet: View {
             .alert("Add payment type", isPresented: $showAddType) {
                 TextField("Payment type", text: $newTypeName)
                 Button("Add", action: commitNewType)
+                    .help("Add this payment type")
                 Button("Cancel", role: .cancel) { newTypeName = "" }
+                    .help("Don’t add a type")
             }
             if let duplicateMessage {
                 Text(duplicateMessage)
@@ -67,10 +69,12 @@ struct RecordPaymentSheet: View {
             }
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without saving")
                 Spacer()
                 Button("Save Payment", action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(amount <= 0)
+                    .help("Save this payment")
             }
         }
         .padding(24)

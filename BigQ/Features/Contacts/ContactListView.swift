@@ -119,6 +119,7 @@ struct ContactListView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button("Add Contact", systemImage: "plus", action: onAdd)
+                    .help("Add a contact")
             }
         }
     }

@@ -14,6 +14,12 @@ struct AgreementMergeContext: Sendable {
     var jobStatus: String = ""
     var eventDate: String = ""
     var primaryContactName: String = ""
+    var brideFirstName: String = ""
+    var brideLastName: String = ""
+    var groomFirstName: String = ""
+    var groomLastName: String = ""
+    /// Both first names, as in `Cindy + Brent`.
+    var coupleFirstNames: String = ""
     var studioName: String = ""
     var studioEmail: String = ""
     var studioPhone: String = ""
@@ -28,6 +34,8 @@ struct AgreementMergeContext: Sendable {
     var totalTax: String = ""
     var totalDiscount: String = ""
     var remainingBalance: String = ""
+    /// First payment due, or the whole balance when nothing is scheduled ahead of it.
+    var retainer: String = ""
     /// Multi-line payment schedule HTML (`<br>` separated) for `[Terms]`.
     var terms: String = ""
     /// Full quote packages / line items for `[Quote Details]`.
@@ -45,58 +53,89 @@ enum AgreementMerge {
         now: Date = .now
     ) -> AgreementMergeContext {
         var ctx = AgreementMergeContext()
-        // Job contact is always the agreement client when the job has one.
         let client = job?.contact ?? contact
         if let client {
-            ctx.clientName = client.displayName
-            ctx.clientFirstName = client.firstName
-            ctx.clientLastName = client.lastName
-            ctx.clientEmail = client.email
-            ctx.clientPhone = client.phone
-            ctx.clientCompany = client.companyName
-            ctx.clientAddress = client.address
-            ctx.primaryContactName = client.displayName
+            ctx.clientName = storedPersonName(client)
+            ctx.clientFirstName = client.givenName
+            ctx.clientLastName = client.familyName
+            ctx.clientEmail = client.email.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.clientPhone = client.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.clientCompany = client.companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.clientAddress = client.address.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.primaryContactName = ctx.clientName
         }
         if let job {
-            ctx.jobName = job.displayName
-            ctx.jobType = job.jobType
-            ctx.jobStatus = job.status.replacingOccurrences(of: "_", with: " ")
-            ctx.eventDate = StudioDay.string(job.eventDate)
-            if ctx.primaryContactName.isEmpty {
-                ctx.primaryContactName = job.contact?.displayName ?? ""
+            ctx.jobName = job.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.jobType = job.jobType.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.jobStatus = job.status
+                .replacingOccurrences(of: "_", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.eventDate = day(job.eventDate)
+            if let bride = job.bride {
+                ctx.brideFirstName = bride.givenName
+                ctx.brideLastName = bride.familyName
+            }
+            if let groom = job.groom {
+                ctx.groomFirstName = groom.givenName
+                ctx.groomLastName = groom.familyName
+            }
+            if !ctx.brideFirstName.isEmpty, !ctx.groomFirstName.isEmpty {
+                ctx.coupleFirstNames = "\(ctx.brideFirstName) + \(ctx.groomFirstName)"
             }
         }
         if let studio {
-            ctx.studioName = studio.displayName
-            ctx.studioEmail = studio.email
-            ctx.studioPhone = studio.phone
-            ctx.studioAddress = studio.address
+            ctx.studioName = studio.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.studioEmail = studio.email.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.studioPhone = studio.phone.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.studioAddress = studio.address.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if let quote {
-            ctx.quoteNumber = quote.displayNumber
-            ctx.quoteDate = StudioDay.string(quote.quoteDate)
-            ctx.validUntil = StudioDay.string(quote.validUntil)
+            ctx.quoteNumber = quote.number.trimmingCharacters(in: .whitespacesAndNewlines)
+            ctx.quoteDate = day(quote.quoteDate)
+            ctx.validUntil = day(quote.validUntil)
             let subtotal = quote.lines.reduce(Decimal.zero) { $0 + $1.lineTotal }
             ctx.subtotal = StudioMoney.string(subtotal)
             ctx.totalAmount = StudioMoney.string(quote.total)
             ctx.totalTax = StudioMoney.string(quote.tax)
             ctx.totalDiscount = StudioMoney.string(quote.discount)
             ctx.remainingBalance = StudioMoney.string(quote.total)
+            ctx.retainer = StudioMoney.string(PayLinkAmount.forQuote(quote).amount)
             ctx.terms = QuotePaymentSchedule.agreementTermsHTML(for: quote)
             ctx.quoteDetails = QuoteMath.agreementDetailsHTML(for: quote)
-            ctx.dateSigned = StudioDay.string(quote.signedAt)
-            // Only fall back to quote bill-to when the job has no client on file.
-            if ctx.clientName.isEmpty { ctx.clientName = quote.clientName }
+            ctx.dateSigned = day(quote.signedAt)
+            if ctx.clientName.isEmpty {
+                ctx.clientName = quote.billToName.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
             if ctx.clientAddress.isEmpty {
-                ctx.clientAddress = (job?.contact ?? quote.contact)?.address ?? ""
+                ctx.clientAddress = (job?.contact ?? quote.contact)?.address
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             }
         }
         // Job contracts (and quotes with no schedule yet) pull `[Terms]` from the job.
         if ctx.terms.isEmpty, let job {
             ctx.terms = QuotePaymentSchedule.agreementTermsHTML(for: job)
         }
-        ctx.agreementCreatedDate = StudioDay.string(now)
+        if ctx.retainer.isEmpty, let job, let first = job.sortedPaymentTerms.first(where: { $0.amount > 0 }) {
+            ctx.retainer = StudioMoney.string(first.amount)
+        }
+        ctx.agreementCreatedDate = day(now)
         return ctx
+    }
+
+    /// A stored date, or nothing. Screen labels use an em dash for “no date”; a contract must not.
+    static func day(_ date: Date?) -> String {
+        guard let date else { return "" }
+        return StudioDay.string(date)
+    }
+
+    /// The name on the contact record. Not “Unnamed contact” and not “No client”.
+    private static func storedPersonName(_ contact: Contact) -> String {
+        let full = contact.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !full.isEmpty { return full }
+        let combined = "\(contact.givenName) \(contact.familyName)"
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !combined.isEmpty { return combined }
+        return contact.companyName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Replaces every known `[Field]` token. Unknown tokens are left alone.
@@ -124,7 +163,7 @@ enum AgreementMerge {
             ("[Last Name]", context.clientLastName),
             ("[Email]", context.clientEmail),
             ("[Phone]", context.clientPhone),
-            ("[Company Name]", context.clientCompany.isEmpty ? context.studioName : context.clientCompany),
+            ("[Company Name]", context.clientCompany),
             ("[Full Address]", context.clientAddress),
             ("[Primary Event Date]", context.eventDate),
             ("[Job Start Date]", context.eventDate),
@@ -157,6 +196,11 @@ enum AgreementMerge {
             ("[Job Status]", context.jobStatus),
             ("[Event Date]", context.eventDate),
             ("[Primary Contact Name]", context.primaryContactName),
+            ("[Bride First Name]", context.brideFirstName),
+            ("[Bride Last Name]", context.brideLastName),
+            ("[Groom First Name]", context.groomFirstName),
+            ("[Groom Last Name]", context.groomLastName),
+            ("[First+First Couple]", context.coupleFirstNames),
             ("[Studio Name]", context.studioName),
             ("[Studio Email]", context.studioEmail),
             ("[Studio Phone]", context.studioPhone),
@@ -170,6 +214,8 @@ enum AgreementMerge {
             ("[Total Tax]", context.totalTax),
             ("[Total Discount]", context.totalDiscount),
             ("[Remaining Balance]", context.remainingBalance),
+            ("[Retainer]", context.retainer),
+            ("[Amount Due]", context.retainer),
             ("[Terms]", context.terms),
             ("[Payment Terms]", context.terms),
             ("[Package Description and Contents]", context.quoteDetails),

@@ -1,4 +1,3 @@
-import AppKit
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -42,8 +41,7 @@ struct QuoteWorkspace: View {
     @State private var editingAgreement: Quote?
     @State private var mailNote: String?
     @State private var quotePayLink = PayLinkModel()
-    @State private var shareItem: QuoteShare?
-    @State private var sendChoice: QuoteShare?
+    @State private var mailSession: QuoteMailSession?
     @State private var convertError: String?
     @State private var deleteTarget: Quote?
     @State private var evidenceImporter = false
@@ -82,6 +80,9 @@ struct QuoteWorkspace: View {
                             previewQuote = selected
                         },
                         onSend: { send(selected) },
+                        onOpenEmail: { email in
+                            mailSession = QuoteMailSession(quote: selected, existing: email)
+                        },
                         onEdit: { editingQuote = selected },
                         onEditAgreement: { editingAgreement = selected },
                         onMarkSigned: { beginConvert(selected) },
@@ -99,35 +100,13 @@ struct QuoteWorkspace: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(StudioSceneBackground())
         }
-        .background(QuoteSharePicker(share: shareItem) { share, didShare in
-            shareItem = nil
-            if didShare { markSent(share.quote) }
-        })
-        .confirmationDialog(
-            "Send quote",
-            isPresented: sendChoicePresented,
-            titleVisibility: .visible,
-            presenting: sendChoice
-        ) { share in
-            Button("Email…") {
-                switch QuoteComposer.email(share) {
-                case .composed:
-                    break
-                case .attachedInApp(let app):
-                    let to = share.recipients.joined(separator: ", ")
-                    mailNote = "\(app) opened a new email with the PDF attached. Add the recipient (\(to.isEmpty ? "the client" : to)) and the subject “\(share.subject)”, then paste the message, which is copied."
-                case .manualAttach:
-                    mailNote = "Your default mail app is web mail, which can’t attach files by itself. The PDF is shown in Finder and copied: drag it into the new email, or paste it."
-                }
-                markSent(share.quote)
-            }
-            Button("Share…") { shareItem = share }
-            Button("Show PDF in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([share.pdfURL])
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { share in
-            Text("Quote \(share.quote.displayNumber) is ready as a PDF.")
+        .sheet(item: $mailSession) { session in
+            QuoteEmailComposer(
+                quote: session.quote,
+                existing: session.existing,
+                linkWarning: session.linkWarning,
+                onSent: { mailNote = $0 }
+            )
         }
         .sheet(isPresented: $showNewQuote) {
             NewQuoteSheet()
@@ -143,11 +122,13 @@ struct QuoteWorkspace: View {
         }
         .alert("Mail", isPresented: mailPresented) {
             Button("OK", role: .cancel) {}
+                .help("Dismiss")
         } message: {
             Text(mailNote ?? "")
         }
         .alert("Couldn’t convert", isPresented: convertPresented) {
             Button("OK", role: .cancel) {}
+                .help("Dismiss")
         } message: {
             Text(convertError ?? "")
         }
@@ -157,12 +138,15 @@ struct QuoteWorkspace: View {
         ) {
             Button("Delete", role: .destructive) {
                 if let deleteTarget {
+                    deleteEmails(for: deleteTarget)
                     modelContext.delete(deleteTarget)
                     try? modelContext.save()
                     selection = nil
                 }
             }
+            .help("Delete this quote")
             Button("Cancel", role: .cancel) {}
+                .help("Keep this quote")
         } message: {
             Text("This removes the quote. Signed invoices already created stay on the books.")
         }
@@ -174,12 +158,15 @@ struct QuoteWorkspace: View {
             Button("Convert to Invoice") {
                 convert(evidence: nil)
             }
+            .help("Create a pending invoice from this quote")
             Button("Attach Signed PDF…") {
                 evidenceImporter = true
             }
+            .help("Attach the client’s signed PDF, then convert")
             Button("Cancel", role: .cancel) {
                 pendingConvert = nil
             }
+            .help("Leave this quote unsigned")
         } message: {
             Text("Creates a pending invoice from this quote’s lines. Attach the client’s signed PDF if you have it.")
         }
@@ -200,10 +187,6 @@ struct QuoteWorkspace: View {
                 pendingConvert = nil
             }
         }
-    }
-
-    private var sendChoicePresented: Binding<Bool> {
-        Binding(get: { sendChoice != nil }, set: { if !$0 { sendChoice = nil } })
     }
 
     private var mailPresented: Binding<Bool> {
@@ -246,6 +229,7 @@ struct QuoteWorkspace: View {
                 Button("New Quote", systemImage: "plus") {
                     showNewQuote = true
                 }
+                .help("New quote")
             }
         }
     }
@@ -255,16 +239,10 @@ struct QuoteWorkspace: View {
             mailNote = "Fill the Ask fields on this quote’s agreement before emailing."
             return
         }
-        Task { await sendPrepared(quote) }
+        Task { await openMail(quote) }
     }
 
-    private func sendPrepared(_ quote: Quote) async {
-        if quote.payToken.isEmpty, quote.total > 0 {
-            await quotePayLink.publishQuote(quote, in: modelContext)
-            if quote.payToken.isEmpty {
-                mailNote = quotePayLink.message
-            }
-        }
+    private func openMail(_ quote: Quote) async {
         do {
             if quote.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 quote.number = QuoteMath.nextNumber(among: quotes.map(\.number))
@@ -274,22 +252,22 @@ struct QuoteWorkspace: View {
             mailNote = error.localizedDescription
             return
         }
-        guard let share = QuoteComposer.prepare(quote) else {
-            mailNote = "Couldn’t create the quote PDF. Preview the PDF and save it to send yourself."
-            return
+        var warning: String?
+        if quote.payToken.isEmpty, quote.total > 0 {
+            await quotePayLink.publishQuote(quote, in: modelContext, announce: false)
+            if quote.payToken.isEmpty {
+                warning = quotePayLink.message
+            }
         }
-        sendChoice = share
+        mailSession = QuoteMailSession(quote: quote, existing: nil, linkWarning: warning)
     }
 
-    /// Marks a draft as sent only once the user has actually picked a way to share it.
-    private func markSent(_ quote: Quote) {
-        guard quote.status == .draft else { return }
-        quote.status = .sent
-        quote.sentAt = quote.sentAt ?? .now
-        do {
-            try modelContext.save()
-        } catch {
-            mailNote = error.localizedDescription
+    private func deleteEmails(for quote: Quote) {
+        let key = QuoteMailKey.existing(for: quote)
+        guard !key.isEmpty else { return }
+        let letters = (try? modelContext.fetch(FetchDescriptor<QuoteEmail>())) ?? []
+        for letter in letters where letter.quoteKey == key {
+            modelContext.delete(letter)
         }
     }
 

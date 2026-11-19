@@ -147,12 +147,14 @@ struct JobContractSheet: View {
             Button("Cancel", role: .cancel) { dismiss() }
                 .disabled(isSaving)
                 .focusable(false)
+                .help("Close without saving")
             Button("Save Draft") { save() }
                 .buttonStyle(.borderedProminent)
                 // Not gated on hasBody — html lags typing. save() checks the pulled text.
                 .disabled(isSaving)
                 .keyboardShortcut(.defaultAction)
                 .focusable(false)
+                .help("Save this agreement")
         }
     }
 

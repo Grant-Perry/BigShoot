@@ -16,6 +16,10 @@ final class Job {
     var paymentScheduleModeRaw: String = QuotePaymentScheduleMode.none.rawValue
 
     var contact: Contact?
+    /// The bride on this job. Same contact records as everyone else.
+    var bride: Contact?
+    /// The groom on this job. Same contact records as everyone else.
+    var groom: Contact?
 
     @Relationship(deleteRule: .nullify, inverse: \Invoice.job)
     var invoices: [Invoice]

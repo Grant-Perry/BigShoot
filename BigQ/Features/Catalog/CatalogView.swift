@@ -42,6 +42,7 @@ struct CatalogWorkspace: View {
                             selection = item.persistentModelID
                             editingItem = item
                         }
+                        .help("Edit this item")
                     }
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -80,6 +81,7 @@ struct CatalogWorkspace: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Add Item", systemImage: "plus") { showAdd = true }
+                    .help("Add a catalog item")
             }
         }
         .sheet(isPresented: $showAdd) {
@@ -106,6 +108,7 @@ private struct CatalogEditor: View {
                     Button("Edit", systemImage: "pencil", action: onEdit)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .help("Edit this item")
                 }
                 Text("Used \(item.timesUsed) times")
                     .foregroundStyle(.secondary)
@@ -133,6 +136,7 @@ private struct CatalogEditor: View {
         .toolbar {
             ToolbarItem {
                 Button("Edit", systemImage: "pencil", action: onEdit)
+                    .help("Edit this item")
             }
         }
     }
@@ -181,10 +185,12 @@ struct CatalogItemSheet: View {
             }
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without saving")
                 Spacer()
                 Button(isEditing ? "Save" : "Add", action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help(isEditing ? "Save this item" : "Add this item")
             }
         }
         .padding(24)

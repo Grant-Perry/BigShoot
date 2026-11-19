@@ -65,14 +65,24 @@ struct ShootQImporter {
         let jobRows = try loadJSON("jobs.json", as: [ShootQJob].self, from: folder)
         let links = (try? loadJSON("job-contacts.json", as: [ShootQJobContact].self, from: folder)) ?? []
         var peopleByJob: [String: [String]] = [:]
+        var brideByJob: [String: String] = [:]
+        var groomByJob: [String: String] = [:]
         for link in links {
-            peopleByJob[String(link.job), default: []].append(String(link.contact))
+            let jobKey = String(link.job)
+            let contactKey = String(link.contact)
+            peopleByJob[jobKey, default: []].append(contactKey)
+            let roles = link.roles ?? []
+            if roles.contains(CoupleRole.bride) { brideByJob[jobKey] = contactKey }
+            if roles.contains(CoupleRole.groom) { groomByJob[jobKey] = contactKey }
         }
 
         var jobs = try indexed(Job.self)
         for (offset, row) in jobRows.enumerated() {
             let job = upsertJob(row, into: &jobs)
             job.contact = linkedContact(jobID: row.id, ownerID: row.externalOwner?.id, peopleByJob: peopleByJob, contacts: contacts)
+            let jobKey = String(row.id)
+            job.bride = brideByJob[jobKey].flatMap { contacts[$0] }
+            job.groom = groomByJob[jobKey].flatMap { contacts[$0] }
             if offset % 300 == 299 {
                 try context.save()
                 await report("Saving jobs", 0.30 + 0.12 * Double(offset) / Double(max(jobRows.count, 1)))
@@ -169,6 +179,44 @@ struct ShootQImporter {
             DebugPrint(mode: .import, "Attached \(imported) ShootQ contracts")
         } catch {
             DebugPrint(mode: .error, "Could not attach ShootQ contracts: \(error.localizedDescription)")
+        }
+    }
+
+    /// The first import kept one contact per job and dropped bride and groom.
+    /// Their records are already in the contact store. This puts those links back.
+    func linkCouplesIfNeeded() async {
+        let key = "BigQ.didLinkCoupleContacts"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        guard let folder = ShootQImportModel.candidateFolder() else { return }
+        let accessing = folder.startAccessingSecurityScopedResource()
+        defer {
+            if accessing { folder.stopAccessingSecurityScopedResource() }
+        }
+        do {
+            let links = try loadJSON("job-contacts.json", as: [ShootQJobContact].self, from: folder)
+            let contacts = try indexed(Contact.self)
+            let jobs = try indexed(Job.self)
+            var linked = 0
+            for link in links {
+                let roles = link.roles ?? []
+                guard roles.contains(CoupleRole.bride) || roles.contains(CoupleRole.groom) else { continue }
+                guard let job = jobs[String(link.job)], let person = contacts[String(link.contact)] else { continue }
+                if roles.contains(CoupleRole.bride), job.bride == nil {
+                    job.bride = person
+                    linked += 1
+                }
+                if roles.contains(CoupleRole.groom), job.groom == nil {
+                    job.groom = person
+                    linked += 1
+                }
+            }
+            if linked > 0 {
+                try context.save()
+            }
+            UserDefaults.standard.set(true, forKey: key)
+            DebugPrint(mode: .import, "Linked \(linked) bride and groom contacts")
+        } catch {
+            DebugPrint(mode: .error, "Could not link bride and groom contacts: \(error.localizedDescription)")
         }
     }
 

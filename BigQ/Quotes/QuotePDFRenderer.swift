@@ -11,9 +11,9 @@ enum QuotePDFRenderer {
     private static let mute = NSColor(calibratedWhite: 0.40, alpha: 1)
     private static let gold = NSColor(calibratedRed: 0.80, green: 0.65, blue: 0.35, alpha: 1)
 
-    static func render(_ quote: Quote) -> Data {
+    static func render(_ quote: Quote, includeAgreement: Bool = true) -> Data {
         let pricing = renderPricing(quote)
-        guard quote.hasAgreement else { return pricing }
+        guard includeAgreement, quote.hasAgreement else { return pricing }
         let agreement = renderAgreement(quote)
         guard let merged = merge(pricing, agreement) else { return pricing }
         return PDFFormPatcher.patch(merged)

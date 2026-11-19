@@ -174,12 +174,14 @@ struct QuoteAgreementSheet: View {
                 .disabled(isSaving)
                 // Don't steal first responder — resigning a wedding NSTextView beachballs.
                 .focusable(false)
+                .help("Close without saving")
             Button("Save") { save() }
                 .buttonStyle(.borderedProminent)
                 // Not gated on hasBody — draft lags typing. save() checks the pulled text.
                 .disabled(isSaving)
                 .keyboardShortcut(.defaultAction)
                 .focusable(false)
+                .help("Save this agreement")
         }
     }
 

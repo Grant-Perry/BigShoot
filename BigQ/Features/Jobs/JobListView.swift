@@ -119,6 +119,7 @@ struct JobListView: View {
                     Button("Edit", systemImage: "pencil") {
                         onEdit(job)
                     }
+                    .help("Edit this job")
                 }
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
@@ -138,6 +139,7 @@ struct JobListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Add Job", systemImage: "plus", action: onAdd)
+                    .help("Add a job")
             }
         }
     }

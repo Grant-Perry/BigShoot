@@ -245,6 +245,7 @@ struct ShootQOwner: Decodable {
 struct ShootQJobContact: Decodable {
     let job: Int
     let contact: Int
+    let roles: [Int]?
 }
 
 struct ShootQInvoice: Decodable {

@@ -34,6 +34,7 @@ struct DashboardCashFlowChart: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .help("Show invoices expected this month")
             .accessibilityHint("Show invoices expected this month")
             .accessibilityAddTraits(showsThisMonth ? .isSelected : [])
             chart

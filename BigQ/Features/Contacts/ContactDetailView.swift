@@ -49,6 +49,7 @@ struct ContactDetailView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .help("Open this job")
                     }
                 }
 
@@ -75,6 +76,7 @@ struct ContactDetailView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .help("Open \(invoice.displayNumber)")
                     }
                 }
             }
@@ -84,12 +86,14 @@ struct ContactDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit", systemImage: "pencil", action: onEdit)
+                    .help("Edit this contact")
             }
             ToolbarItem {
                 Button(contact.archived ? "Unarchive" : "Archive") {
                     contact.archived.toggle()
                     try? modelContext.save()
                 }
+                .help(contact.archived ? "Put this contact back in the list" : "Hide this contact from the active list")
             }
         }
     }

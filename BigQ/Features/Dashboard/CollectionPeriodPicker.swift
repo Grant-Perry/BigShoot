@@ -37,6 +37,7 @@ struct CollectionPeriodPicker: View {
                 .contentShape(.rect)
                 .accessibilityAddTraits(window == item ? .isSelected : [])
                 .accessibilityHint(hint(for: item))
+                .help(hint(for: item))
                 .collectionRangePopover(
                     attached: item == .range,
                     isPresented: $showsRange,

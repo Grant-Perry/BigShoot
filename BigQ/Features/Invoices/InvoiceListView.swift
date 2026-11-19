@@ -111,17 +111,21 @@ struct InvoiceWorkspace: View {
             presenting: deletePrompt
         ) { prompt in
             Button("Delete", role: .destructive) { confirmDelete(prompt) }
+                .help("Delete this invoice")
             Button("Cancel", role: .cancel) {}
+                .help("Keep this invoice")
         } message: { prompt in
             Text(prompt.message)
         }
         .alert("Couldn’t update the books", isPresented: booksErrorPresented) {
             Button("OK", role: .cancel) {}
+                .help("Dismiss")
         } message: {
             Text(booksError ?? "")
         }
         .alert("Mail", isPresented: mailPresented) {
             Button("OK", role: .cancel) {}
+                .help("Dismiss")
         } message: {
             Text(mailNote ?? "")
         }
@@ -169,9 +173,11 @@ struct InvoiceWorkspace: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Audit Trail", systemImage: "clock.arrow.circlepath") { showTrail = true }
+                    .help("Show the audit trail")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button("New Invoice", systemImage: "plus") { showNewInvoice = true }
+                    .help("New invoice")
             }
         }
     }

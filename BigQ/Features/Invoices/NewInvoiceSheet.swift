@@ -88,7 +88,9 @@ struct NewInvoiceSheet: View {
             Button("Save Anyway", role: .destructive) {
                 commitSave(markSent: pendingMarkSent)
             }
+            .help("Save over the submitted invoice")
             Button("Cancel", role: .cancel) {}
+                .help("Keep the submitted invoice")
         } message: {
             if let submitted = draft.pipelineSubmittedAt {
                 Text("This invoice was submitted \(StudioStamp.string(submitted)). Saving replaces what’s already in the pipeline.")
@@ -285,11 +287,13 @@ struct NewInvoiceSheet: View {
         HStack {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
+                .help("Close without saving")
             if draft.editingSentInvoice {
                 saveSentInvoiceButton
             } else {
                 Button("Save Draft") { save(markSent: false) }
                     .disabled(!canCommit)
+                    .help("Save this invoice as a draft")
                 saveSentButton
             }
         }
@@ -299,6 +303,7 @@ struct NewInvoiceSheet: View {
     private var saveSentInvoiceButton: some View {
         let button = Button("Save") { save(markSent: false) }
             .disabled(!canCommit)
+            .help("Save changes to this invoice")
         if canCommit {
             button.keyboardShortcut(.defaultAction)
         } else {
@@ -310,6 +315,7 @@ struct NewInvoiceSheet: View {
     private var saveSentButton: some View {
         let button = Button("Save & Mark Sent") { save(markSent: true) }
             .disabled(!canCommit)
+            .help("Save and mark this invoice sent")
         if canCommit {
             button.keyboardShortcut(.defaultAction)
         } else {

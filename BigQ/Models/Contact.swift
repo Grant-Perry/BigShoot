@@ -22,6 +22,12 @@ final class Contact {
     @Relationship(deleteRule: .nullify, inverse: \Job.contact)
     var jobs: [Job]
 
+    @Relationship(deleteRule: .nullify, inverse: \Job.bride)
+    var jobsAsBride: [Job]
+
+    @Relationship(deleteRule: .nullify, inverse: \Job.groom)
+    var jobsAsGroom: [Job]
+
     @Relationship(deleteRule: .nullify, inverse: \Invoice.contact)
     var invoices: [Invoice]
 
@@ -53,6 +59,8 @@ final class Contact {
         self.archived = archived
         self.createdAt = createdAt
         self.jobs = []
+        self.jobsAsBride = []
+        self.jobsAsGroom = []
         self.invoices = []
         self.contractSignatures = []
     }
@@ -64,5 +72,26 @@ final class Contact {
         if !combined.isEmpty { return combined }
         if !companyName.isEmpty { return companyName }
         return "Unnamed contact"
+    }
+
+    /// First name on the contact, or the first word of the stored full name.
+    var givenName: String {
+        let first = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !first.isEmpty { return first }
+        return storedFullNameParts.first ?? ""
+    }
+
+    /// Last name on the contact, or the rest of the stored full name.
+    var familyName: String {
+        let last = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !last.isEmpty { return last }
+        return storedFullNameParts.dropFirst().joined(separator: " ")
+    }
+
+    private var storedFullNameParts: [String] {
+        fullName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
     }
 }

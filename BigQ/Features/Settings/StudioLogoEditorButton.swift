@@ -20,6 +20,7 @@ struct StudioLogoEditorButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isPreparing)
+        .help(imageData == nil ? "Add a logo" : "Edit, replace, or remove the logo")
         .accessibilityLabel("Add or change logo for \(title)")
         .popover(isPresented: $isShowingPhotoActions, arrowEdge: .bottom) {
             StudioLogoPhotoActions(

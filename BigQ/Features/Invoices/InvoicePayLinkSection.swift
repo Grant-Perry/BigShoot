@@ -7,10 +7,12 @@ import SwiftUI
 final class PayLinkModel {
     var message = ""
     var isWorking = false
+    /// Page copied on the last successful link. The result alert opens it.
+    var page: URL?
     private(set) var copied = false
 
-    func publish(_ invoice: Invoice, in context: ModelContext) async {
-        await run(invoice, in: context, create: true)
+    func publish(_ invoice: Invoice, in context: ModelContext, replace: Bool = false) async {
+        await run(invoice, in: context, create: true, replace: replace)
     }
 
     func refresh(_ invoice: Invoice, in context: ModelContext) async {
@@ -18,7 +20,8 @@ final class PayLinkModel {
         await run(invoice, in: context, create: false)
     }
 
-    private func run(_ invoice: Invoice, in context: ModelContext, create: Bool) async {
+    private func run(_ invoice: Invoice, in context: ModelContext, create: Bool, replace: Bool = false) async {
+        if create { page = nil }
         guard !isWorking else { return }
         guard let studioKey = PayStudioKey.load() else {
             message = PayLinkError.notConfigured.localizedDescription
@@ -31,20 +34,36 @@ final class PayLinkModel {
         let api = PayAPI(baseURL: PayAPI.liveBase, studioKey: studioKey)
         do {
             let snapshot: PayLinkSnapshot
+            var keptExisting = false
             if create {
+                let due = PayLinkAmount.forInvoice(invoice)
+                let previous = invoice.payToken
                 snapshot = try await api.publish(
                     invoiceId: invoiceId,
                     number: invoice.displayNumber,
-                    amount: PayMoney.wire(PayLinkAmount.forInvoice(invoice)),
+                    amount: PayMoney.wire(due.amount),
+                    amountKind: due.kind,
+                    balance: PayMoney.wire(due.balance),
+                    schedule: due.later,
                     billToName: invoice.clientName,
-                    studioName: invoice.studio?.displayName ?? StudioBrand.defaultName
+                    studioName: invoice.studio?.displayName ?? StudioBrand.defaultName,
+                    replace: replace
                 )
+                keptExisting = replace && snapshot.token == previous
+                invoice.payToken = snapshot.token
             } else {
                 snapshot = try await api.status(invoiceId: invoiceId)
+                invoice.payToken = snapshot.token
             }
-            invoice.payToken = snapshot.token
             try context.save()
             let applied = try record(snapshot, on: invoice, in: context)
+            if create {
+                copy(snapshot.url)
+                let due = PayLinkAmount.forInvoice(invoice)
+                message = payLinkMessage(replaced: replace, kept: keptExisting, amount: due.amount)
+                if snapshot.isPaid { message = "Paid online." }
+                return
+            }
             if snapshot.isPaid {
                 message = "Paid online."
                 return
@@ -53,10 +72,7 @@ final class PayLinkModel {
                 message = "Recorded \(StudioMoney.string(applied))."
                 return
             }
-            if create {
-                copy(snapshot.url)
-                message = "Pay link copied for \(StudioMoney.string(PayLinkAmount.forInvoice(invoice)))."
-            } else if message.isEmpty {
+            if message.isEmpty {
                 message = "Waiting for the client."
             }
         } catch let error as PayLinkError {
@@ -89,8 +105,10 @@ final class PayLinkModel {
         return applied
     }
 
-    func publishQuote(_ quote: Quote, in context: ModelContext) async {
-        guard PayLinkAmount.forQuote(quote) > 0 else {
+    func publishQuote(_ quote: Quote, in context: ModelContext, replace: Bool = false, announce: Bool = true) async {
+        page = nil
+        let due = PayLinkAmount.forQuote(quote)
+        guard due.amount > 0 else {
             message = "Add an amount before creating a pay link."
             return
         }
@@ -102,19 +120,32 @@ final class PayLinkModel {
         isWorking = true
         defer { isWorking = false }
         let quoteId = ensureArchiveID(on: quote, in: context)
+        let previous = quote.payToken
         let api = PayAPI(baseURL: PayAPI.liveBase, studioKey: studioKey)
         do {
             let snapshot = try await api.publish(
                 invoiceId: quoteId,
                 number: quote.displayNumber,
-                amount: PayMoney.wire(PayLinkAmount.forQuote(quote)),
+                amount: PayMoney.wire(due.amount),
+                amountKind: due.kind,
+                balance: PayMoney.wire(due.balance),
+                schedule: due.later,
                 billToName: quote.clientName,
-                studioName: quote.studio?.displayName ?? StudioBrand.defaultName
+                studioName: quote.studio?.displayName ?? StudioBrand.defaultName,
+                replace: replace
             )
             quote.payToken = snapshot.token
             try context.save()
-            copy(snapshot.url)
-            message = "Pay link copied for \(StudioMoney.string(PayLinkAmount.forQuote(quote)))."
+            if announce {
+                copy(snapshot.url)
+                message = payLinkMessage(
+                    replaced: replace,
+                    kept: replace && snapshot.token == previous,
+                    amount: due.amount
+                )
+            } else {
+                message = ""
+            }
         } catch {
             message = error.localizedDescription
         }
@@ -142,6 +173,13 @@ final class PayLinkModel {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url, forType: .string)
         copied = true
+        page = URL(string: url)
+    }
+
+    func copyQuote(_ quote: Quote) {
+        guard !quote.payToken.isEmpty else { return }
+        copy(payURL(quote.payToken).absoluteString)
+        message = "Pay link copied."
     }
 
     func copyAgain(_ invoice: Invoice) {
@@ -149,6 +187,68 @@ final class PayLinkModel {
         copy(payURL(invoice.payToken).absoluteString)
         message = "Pay link copied."
     }
+}
+
+struct PayLinkResultAlert: ViewModifier {
+    @Binding var isPresented: Bool
+    var model: PayLinkModel
+    @Environment(\.openURL) private var openURL
+
+    func body(content: Content) -> some View {
+        content.alert("Pay link", isPresented: $isPresented) {
+            if let page = model.page {
+                Button("View on the Web") { openURL(page) }
+                    .help("Open the pay page")
+            }
+            Button("OK", role: .cancel) {}
+                .help("Dismiss")
+        } message: {
+            Text(model.message.isEmpty ? "Couldn’t create the pay link." : model.message)
+        }
+    }
+}
+
+extension View {
+    func payLinkResultAlert(isPresented: Binding<Bool>, model: PayLinkModel) -> some View {
+        modifier(PayLinkResultAlert(isPresented: isPresented, model: model))
+    }
+
+    fileprivate func commandHeld(_ held: Binding<Bool>) -> some View {
+        modifier(CommandHeldModifier(held: held))
+    }
+}
+
+private struct CommandHeldModifier: ViewModifier {
+    @Binding var held: Bool
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { start() }
+            .onDisappear { stop() }
+    }
+
+    private func start() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            let down = event.modifierFlags.contains(.command)
+            MainActor.assumeIsolated { held = down }
+            return event
+        }
+    }
+
+    private func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        held = false
+    }
+}
+
+private func payLinkMessage(replaced: Bool, kept: Bool, amount: Decimal) -> String {
+    if kept { return "A payment is already on this link, so it was kept." }
+    let figure = StudioMoney.string(amount)
+    if replaced { return "New pay link copied for \(figure)." }
+    return "Pay link copied for \(figure)."
 }
 
 private func payURL(_ token: String) -> URL {
@@ -161,24 +261,31 @@ struct QuotePayLinkButton: View {
     @Environment(\.modelContext) private var modelContext
     @State private var model = PayLinkModel()
     @State private var showResult = false
+    @State private var commandHeld = false
 
     var body: some View {
         if quote.total > 0 && quote.status != .void {
-            Button(quote.payToken.isEmpty ? "Create pay link" : "Copy pay link", systemImage: "link") {
-                Task {
-                    await model.publishQuote(quote, in: modelContext)
+            let hasLink = !quote.payToken.isEmpty
+            Button(hasLink && !commandHeld ? "Copy pay link" : "Create pay link", systemImage: "link") {
+                let replace = NSEvent.modifierFlags.contains(.command) && hasLink
+                if !hasLink || replace {
+                    Task {
+                        await model.publishQuote(quote, in: modelContext, replace: replace)
+                        showResult = true
+                    }
+                } else {
+                    model.copyQuote(quote)
                     showResult = true
                 }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(model.isWorking)
-            .help("Copy a link the client can use to pay this quote after they sign")
-            .alert("Pay link", isPresented: $showResult) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(model.message.isEmpty ? "Couldn’t create the pay link." : model.message)
-            }
+            .commandHeld($commandHeld)
+            .help(hasLink
+                ? "Copy the pay link. Hold ⌘ and click to create a new one and replace this link."
+                : "Copy a link the client can use to pay this quote after they sign")
+            .payLinkResultAlert(isPresented: $showResult, model: model)
         }
     }
 }
@@ -190,13 +297,16 @@ struct InvoicePayLinkButton: View {
     @Environment(\.modelContext) private var modelContext
     @State private var model = PayLinkModel()
     @State private var showResult = false
+    @State private var commandHeld = false
 
     var body: some View {
         if invoice.canRecordPayment || !invoice.payToken.isEmpty {
-            Button(invoice.payToken.isEmpty ? "Create pay link" : "Copy pay link", systemImage: "link") {
-                if invoice.payToken.isEmpty {
+            let hasLink = !invoice.payToken.isEmpty
+            Button(hasLink && !commandHeld ? "Copy pay link" : "Create pay link", systemImage: "link") {
+                let replace = NSEvent.modifierFlags.contains(.command) && hasLink
+                if !hasLink || replace {
                     Task {
-                        await model.publish(invoice, in: modelContext)
+                        await model.publish(invoice, in: modelContext, replace: replace)
                         showResult = true
                     }
                 } else {
@@ -207,12 +317,11 @@ struct InvoicePayLinkButton: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(model.isWorking)
-            .help("Copy a link the client can use to pay this balance")
-            .alert("Pay link", isPresented: $showResult) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(model.message.isEmpty ? "Couldn’t create the pay link." : model.message)
-            }
+            .commandHeld($commandHeld)
+            .help(hasLink
+                ? "Copy the pay link. Hold ⌘ and click to create a new one and replace this link."
+                : "Copy a link the client can use to pay this balance")
+            .payLinkResultAlert(isPresented: $showResult, model: model)
         }
     }
 }
@@ -250,11 +359,13 @@ struct InvoicePayLinkSection: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(model.isWorking)
+                        .help(invoice.payToken.isEmpty ? "Create a link the client can pay" : "Refresh the pay link")
                     }
                     if !invoice.payToken.isEmpty {
                         Button("Copy link") { model.copyAgain(invoice) }
                             .buttonStyle(.bordered)
                             .disabled(model.isWorking)
+                            .help("Copy the pay link")
                     }
                     if model.isWorking {
                         ProgressView()

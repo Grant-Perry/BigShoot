@@ -7,12 +7,35 @@ struct QuoteShare: Identifiable {
     let id = UUID()
     let quote: Quote
     let pdfURL: URL
+    let agreementURL: URL?
     let recipients: [String]
     let subject: String
     let body: String
 
-    /// Body text plus the PDF file. Apple Mail's compose service accepts a file URL (not an item provider).
-    var items: [Any] { [body, pdfURL] }
+    /// Body text plus the PDF files. Apple Mail's compose service accepts a file URL (not an item provider).
+    /// The retainer phrase carries the pay address as a link. Postmark HTML does the same.
+    var items: [Any] {
+        var values: [Any] = [linkedLetter, pdfURL]
+        if let agreementURL { values.append(agreementURL) }
+        return values
+    }
+
+    var fileURLs: [URL] {
+        [pdfURL, agreementURL].compactMap { $0 }
+    }
+
+    /// Retainer phrase as a real link. The address stays on the next line for plain-text mail.
+    private var linkedLetter: NSAttributedString {
+        let plain = QuoteMailMerge.plainText(body, quote: quote)
+        let letter = NSMutableAttributedString(string: plain)
+        let address = QuoteMailMerge.payURL(for: quote)
+        guard let url = URL(string: address), !address.isEmpty,
+              let range = plain.range(of: QuoteMailMerge.payLinkPhrase) else { return letter }
+        let nsRange = NSRange(range, in: plain)
+        letter.addAttribute(.link, value: url, range: nsRange)
+        letter.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
+        return letter
+    }
 }
 
 enum QuoteComposer {
@@ -73,15 +96,15 @@ enum QuoteComposer {
         let pasteboard = NSPasteboard.general
         if let app, !browserFragments.contains(where: { bundleID.contains($0) }) {
             pasteboard.clearContents()
-            pasteboard.setString(share.body, forType: .string)
-            NSWorkspace.shared.open([share.pdfURL], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+            pasteboard.setString(QuoteMailMerge.plainText(share.body, quote: share.quote), forType: .string)
+            NSWorkspace.shared.open(share.fileURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
             let name = FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
             return .attachedInApp(name)
         }
 
-        NSWorkspace.shared.activateFileViewerSelecting([share.pdfURL])
+        NSWorkspace.shared.activateFileViewerSelecting(share.fileURLs)
         pasteboard.clearContents()
-        pasteboard.writeObjects([share.pdfURL as NSURL])
+        pasteboard.writeObjects(share.fileURLs.map { $0 as NSURL })
 
         var components = URLComponents()
         components.scheme = "mailto"
@@ -90,110 +113,68 @@ enum QuoteComposer {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "&+=?")
         func encode(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value }
-        components.percentEncodedQuery = "subject=\(encode(share.subject))&body=\(encode(share.body))"
+        let mailBody = QuoteMailMerge.plainText(share.body, quote: share.quote)
+        components.percentEncodedQuery = "subject=\(encode(share.subject))&body=\(encode(mailBody))"
         if let url = components.url { NSWorkspace.shared.open(url) }
         return .manualAttach
     }
 
-    /// Client-facing email text. With an agreement it walks the client through signing and returning it.
-    private static func instructions(
-        for quote: Quote,
-        clientName: String,
-        studioName: String,
-        letterhead: String,
-        payURL: String
-    ) -> String {
-        let job = quote.job?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let forJob = job.isEmpty ? "" : " for \(job)"
-        let greeting = clientName.isEmpty ? "Hello," : "Hello \(clientName),"
-
-        guard quote.hasAgreement else {
-            return """
-            \(greeting)
-
-            Thank you for considering \(studioName). Attached is quote \(quote.displayNumber)\(forJob).
-
-            \(payOffer(payURL, due: StudioMoney.string(PayLinkAmount.forQuote(quote)), afterSigning: false))
-
-            \(letterhead)
-            """
-        }
-
-        return """
-        \(greeting)
-
-        Thank you for choosing \(studioName). Attached is quote \(quote.displayNumber)\(forJob), with the agreement included in the same PDF.
-
-        To reserve your date:
-
-        1. Save the attached PDF and open it in Preview (Mac), the Files app (iPhone/iPad), or Adobe Acrobat Reader. Previews inside some mail and messaging apps can't fill in forms.
-        2. Review the quote and read the agreement.
-        3. On the last page, type your full name in the Client signature box and today's date in the Date box. You can also print, sign by hand, and scan it.
-        4. Save the PDF and reply to this email with the signed copy attached.
-
-        \(payOffer(payURL, due: StudioMoney.string(PayLinkAmount.forQuote(quote)), afterSigning: true))
-
-        If you have any questions, just reply to this email.
-
-        \(letterhead)
-        """
-    }
-
-    private static func payOffer(_ payURL: String, due: String, afterSigning: Bool) -> String {
-        guard !payURL.isEmpty else {
-            return afterSigning
-                ? "Once we receive the signed agreement, we'll send your first invoice for the payment due at signing. Your date is reserved once that payment is received."
-                : "Please look it over and reply to this email with any questions, or let us know you'd like to book and we'll send the agreement."
-        }
-        let lead = afterSigning
-            ? "Once you have signed, pay \(due) here. You can pay that amount or a smaller one:"
-            : "When you're ready to book, pay \(due) here. You can pay that amount or a smaller one:"
-        return """
-        \(lead)
-
-        \(payURL)
-
-        Your date is reserved once that payment is received.
-        """
-    }
-
-    /// Renders the quote PDF to a temp file and builds the mail text.
-    /// Goes through the share picker rather than forcing `.composeEmail`, which
-    /// opens a browser tab with no attachment when the default mail app is a web client.
-    static func prepare(_ quote: Quote) -> QuoteShare? {
-        let data = QuotePDFRenderer.render(quote)
-        let safeNumber = quote.displayNumber.replacingOccurrences(of: " ", with: "-")
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("BigQ-Quote-\(safeNumber).pdf")
+    /// Renders the quote PDF, and the agreement PDF when requested, then returns the letter to hand off.
+    static func write(
+        quote: Quote,
+        recipients: [String],
+        subject: String,
+        body: String,
+        attachAgreement: Bool
+    ) -> QuoteShare? {
+        let safeNumber = Self.fileToken(quote.displayNumber)
+        let directory = FileManager.default.temporaryDirectory
+        let quoteURL = directory.appendingPathComponent(Self.attachmentName(quote: quote, role: "Quote"))
         do {
-            try data.write(to: url, options: .atomic)
+            try QuotePDFRenderer.render(quote, includeAgreement: false).write(to: quoteURL, options: .atomic)
         } catch {
             DebugPrint(mode: .error, "Could not write quote PDF: \(error.localizedDescription)")
             return nil
         }
 
-        let name = quote.clientName
-        let signedBy = quote.studio?.displayName ?? "Studio"
-        let letterhead = quote.studio?.letterhead.joined(separator: "\n") ?? signedBy
-        let recipients = [quote.contact?.email].compactMap { email -> String? in
-            let trimmed = email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return trimmed.isEmpty ? nil : trimmed
+        var agreementURL: URL?
+        if attachAgreement, quote.hasAgreement {
+            let url = directory.appendingPathComponent(Self.attachmentName(quote: quote, role: "Agreement"))
+            do {
+                try QuotePDFRenderer.renderAgreementOnly(quote).write(to: url, options: .atomic)
+                agreementURL = url
+            } catch {
+                DebugPrint(mode: .error, "Could not write agreement PDF: \(error.localizedDescription)")
+                return nil
+            }
         }
-        let body = instructions(
-            for: quote,
-            clientName: name,
-            studioName: signedBy,
-            letterhead: letterhead,
-            payURL: quote.payToken.isEmpty
-                ? ""
-                : PayAPI.liveBase.appendingPathComponent("pay").appendingPathComponent(quote.payToken).absoluteString
-        )
+
         return QuoteShare(
             quote: quote,
-            pdfURL: url,
+            pdfURL: quoteURL,
+            agreementURL: agreementURL,
             recipients: recipients,
-            subject: "Quote \(quote.displayNumber) from \(signedBy)",
+            subject: subject,
             body: body
         )
+    }
+
+    /// Postmark accepts a plain PDF name. Strip anything else out of the quote number.
+    private static func fileToken(_ number: String) -> String {
+        let allowed = CharacterSet.alphanumerics
+        let mapped = number.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        let token = String(mapped).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return token.isEmpty ? "Draft" : token
+    }
+
+    /// What the client sees on the file. The studio name, not the app name.
+    private static func attachmentName(quote: Quote, role: String) -> String {
+        let stored = quote.studio?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let studio = stored.isEmpty ? StudioBrand.defaultName : stored
+        let number = fileToken(quote.displayNumber)
+        return "\(studio) - \(role) \(number).pdf"
     }
 }
 

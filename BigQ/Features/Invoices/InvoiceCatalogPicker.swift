@@ -55,6 +55,7 @@ struct InvoiceCatalogPicker: View {
                 Button("Done") { dismiss() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .help("Close the catalog")
             }
         }
         .padding(12)
@@ -100,6 +101,7 @@ struct InvoiceCatalogPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help("Add \(item.name)")
         .accessibilityLabel("Add \(item.name), \(StudioMoney.string(item.defaultPrice))")
     }
 }

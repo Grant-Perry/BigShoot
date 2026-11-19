@@ -70,6 +70,7 @@ struct JobMenuPicker: View {
             }
         }
         .buttonStyle(.bordered)
+        .help("Choose a job")
         .accessibilityLabel("Job:")
         .accessibilityValue(title)
         .contextMenu {
@@ -77,6 +78,7 @@ struct JobMenuPicker: View {
                 copyJobName()
             }
             .disabled(copyableName == nil)
+            .help("Copy the job name")
         }
     }
 
@@ -168,6 +170,7 @@ private struct JobMenuList: View {
                 Button("Edit", systemImage: "pencil") {
                     onEdit(job)
                 }
+                .help("Edit this job")
             }
             .accessibilityAction(named: "Edit") {
                 onEdit(job)
@@ -208,6 +211,7 @@ private struct JobMenuRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .help("Choose \(title)")
         .onHover { hovered = $0 }
     }
 

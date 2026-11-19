@@ -66,12 +66,15 @@ struct InvoiceDetailView: View {
             presenting: receiptPendingRemoval
         ) { id in
             Button("Remove Payment", role: .destructive) { confirmRemoval(id) }
+                .help("Remove this payment")
             Button("Cancel", role: .cancel) {}
+                .help("Keep this payment")
         } message: { id in
             Text(removalMessage(for: id))
         }
         .alert("Couldn’t update the books", isPresented: booksErrorPresented) {
             Button("OK", role: .cancel) {}
+                .help("Dismiss")
         } message: {
             Text(booksError ?? "")
         }
@@ -79,19 +82,31 @@ struct InvoiceDetailView: View {
             if invoice.status == .draft {
                 ToolbarItem {
                     Button("Mark Sent", action: onMarkSent)
+                        .help("Mark this invoice sent")
                 }
             }
             if invoice.canEditLines {
-                ToolbarItem { Button("Edit", systemImage: "pencil", action: onEdit) }
+                ToolbarItem {
+                    Button("Edit", systemImage: "pencil", action: onEdit)
+                        .help("Edit this invoice")
+                }
             }
-            ToolbarItem { Button("Preview PDF", systemImage: "doc.richtext", action: onPreview) }
-            ToolbarItem { Button("Remind", systemImage: "envelope", action: onRemind) }
+            ToolbarItem {
+                Button("Preview PDF", systemImage: "doc.richtext", action: onPreview)
+                    .help("Preview the invoice PDF")
+            }
+            ToolbarItem {
+                Button("Remind", systemImage: "envelope", action: onRemind)
+                    .help("Email a reminder")
+            }
             ToolbarItem {
                 Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+                    .help("Delete this invoice")
             }
             if invoice.canRecordPayment {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Record Payment", systemImage: "dollarsign.circle", action: onRecordPayment)
+                        .help("Record a payment")
                 }
             }
         }
@@ -127,10 +142,12 @@ struct InvoiceDetailView: View {
                     Button("Preview", systemImage: "doc.richtext", action: onPreview)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .help("Preview the invoice PDF")
                     if invoice.canEditLines {
                         Button("Edit", systemImage: "pencil", action: onEdit)
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .help("Edit this invoice")
                     }
                     StatusBadge(status: invoice.displayStatus)
                 }
@@ -298,6 +315,7 @@ struct InvoiceDetailView: View {
             }
             .buttonStyle(.borderless)
             .font(.callout)
+            .help("Remove this payment")
             .accessibilityLabel("Remove \(StudioMoney.string(receipt.amount)) \(receipt.methodTitle)")
             .accessibilityHint("Takes this payment off the invoice and puts the balance back on the books.")
             .frame(width: 72, alignment: .trailing)

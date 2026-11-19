@@ -62,10 +62,12 @@ struct StudioLogoCropEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: cancel)
+                        .help("Close without using this crop")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Use Logo", action: useLogo)
                         .fontWeight(.semibold)
+                        .help("Use this crop as the logo")
                 }
             }
         }
@@ -78,6 +80,7 @@ struct StudioLogoCropEditor: View {
                     Image(systemName: "minus.magnifyingglass")
                 }
                 .buttonStyle(.bordered)
+                .help("Zoom out")
                 .accessibilityLabel("Zoom out")
 
                 Slider(
@@ -96,11 +99,13 @@ struct StudioLogoCropEditor: View {
                     Image(systemName: "plus.magnifyingglass")
                 }
                 .buttonStyle(.bordered)
+                .help("Zoom in")
                 .accessibilityLabel("Zoom in")
             }
 
             Button("Reset position and zoom", action: resetCropTransform)
                 .buttonStyle(.borderless)
+                .help("Reset position and zoom")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }

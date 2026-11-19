@@ -79,6 +79,7 @@ struct NewItemChooserSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .help(item.help)
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(StudioDesign.Surface.paper.opacity(0.55))
@@ -93,6 +94,7 @@ struct NewItemChooserSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .help("Close")
             }
         }
         .padding(20)
@@ -111,11 +113,13 @@ struct NewItemCommand: View {
                 NotificationCenter.default.post(name: .bigQAddCatalogItem, object: nil)
             }
             .keyboardShortcut("n")
+            .help("Add a line from the catalog")
         } else {
             Button("New…") {
                 NotificationCenter.default.post(name: .bigQNewItem, object: nil)
             }
             .keyboardShortcut("n")
+            .help("Create something new")
         }
     }
 }

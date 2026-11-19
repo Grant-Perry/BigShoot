@@ -24,6 +24,7 @@ struct BooksHistorySheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .help("Close the audit trail")
                 }
             }
         }

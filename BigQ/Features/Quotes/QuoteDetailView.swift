@@ -7,6 +7,7 @@ struct QuoteDetailView: View {
     var onPreview: () -> Void
     var onPreviewContract: () -> Void = {}
     var onSend: () -> Void
+    var onOpenEmail: (QuoteEmail) -> Void = { _ in }
     var onEdit: () -> Void
     var onEditAgreement: () -> Void = {}
     var onMarkSigned: () -> Void
@@ -30,6 +31,8 @@ struct QuoteDetailView: View {
                     paymentTermsCard
                 }
 
+                QuoteEmailsSection(quote: quote, onOpen: onOpenEmail, onCompose: onSend)
+
                 if quote.hasAgreement {
                     agreementCard
                 } else if quote.canEdit {
@@ -51,6 +54,7 @@ struct QuoteDetailView: View {
             if quote.canEdit {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Edit", systemImage: "pencil", action: onEdit)
+                        .help("Edit this quote")
                 }
                 ToolbarItem {
                     if quote.hasAgreement {
@@ -64,6 +68,7 @@ struct QuoteDetailView: View {
             }
             ToolbarItem {
                 Button("Preview PDF", systemImage: "doc.richtext", action: onPreview)
+                    .help("Preview the quote PDF")
             }
             if quote.hasAgreement {
                 ToolbarItem {
@@ -73,7 +78,8 @@ struct QuoteDetailView: View {
             }
             if quote.canSend {
                 ToolbarItem {
-                    Button("Email Quote", systemImage: "envelope", action: onSend)
+                    Button("Send Quote", systemImage: "envelope", action: onSend)
+                        .help("Email this quote")
                 }
             }
             if quote.canMarkSigned {
@@ -84,6 +90,7 @@ struct QuoteDetailView: View {
             }
             ToolbarItem {
                 Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+                    .help("Delete this quote")
             }
         }
     }
@@ -161,6 +168,7 @@ struct QuoteDetailView: View {
                         Label(invoice.displayNumber, systemImage: "doc.text")
                     }
                     .buttonStyle(.link)
+                    .help("Open \(invoice.displayNumber)")
                 }
             }
         }
@@ -209,7 +217,7 @@ struct QuoteDetailView: View {
             StudioLabeledStack {
                 ForEach(Array(paymentTermDrafts.enumerated()), id: \.offset) { index, draft in
                     StudioLabeledRow(QuotePaymentSchedule.summaryLabel(draft, index: index)) {
-                        Text(QuotePaymentSchedule.summaryValue(draft))
+                        Text(QuotePaymentSchedule.summaryValue(draft, eventDate: quote.job?.eventDate))
                     }
                 }
             }
@@ -222,7 +230,7 @@ struct QuoteDetailView: View {
 
     private func copyPaymentTerms() {
         let lines = paymentTermDrafts.enumerated().map { index, draft in
-            "\(QuotePaymentSchedule.summaryLabel(draft, index: index)): \(QuotePaymentSchedule.summaryValue(draft))"
+            "\(QuotePaymentSchedule.summaryLabel(draft, index: index)): \(QuotePaymentSchedule.summaryValue(draft, eventDate: quote.job?.eventDate))"
         }
         let board = NSPasteboard.general
         board.clearContents()
@@ -280,6 +288,7 @@ struct QuoteDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Agreement")
                 .accessibilityValue(isShowingAgreementBody ? "Expanded" : "Collapsed")
+                .help(isShowingAgreementBody ? "Collapse agreement" : "Expand agreement")
                 .accessibilityHint(isShowingAgreementBody ? "Collapse agreement" : "Expand agreement")
 
                 Spacer(minLength: 8)
@@ -316,6 +325,7 @@ struct QuoteDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Button("Add agreement", systemImage: "signature", action: onEditAgreement)
                 .buttonStyle(.bordered)
+                .help("Attach an agreement to this quote")
         }
         .padding(StudioDesign.Spacing.card)
         .frame(maxWidth: .infinity, alignment: .leading)

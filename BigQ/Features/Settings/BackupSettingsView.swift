@@ -27,6 +27,7 @@ struct BackupSettingsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(model.isBusy)
+                    .help("Save a backup of the studio")
                     Text("Agreements and logos are saved beside the books. Backing up into an existing folder leaves unchanged agreement files where they are.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -41,6 +42,7 @@ struct BackupSettingsView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(model.isBusy)
+                .help("Restore the studio from a backup")
 
                 if let status = model.status {
                     Text(status)
@@ -59,9 +61,11 @@ struct BackupSettingsView: View {
             Button(model.restoreMode.actionTitle, role: model.restoreMode == .replace ? .destructive : nil) {
                 model.performRestore(in: modelContext)
             }
+            .help(model.restoreMode.actionTitle)
             Button("Cancel", role: .cancel) {
                 model.cancelRestore()
             }
+            .help("Don’t restore")
         } message: {
             Text(model.confirmMessage)
         }
@@ -95,6 +99,7 @@ struct BackupSettingsView: View {
                     .studioActive(choice == selection)
                 }
                 .buttonStyle(.plain)
+                .help(detail(choice))
                 .accessibilityAddTraits(choice == selection ? .isSelected : [])
             }
         }

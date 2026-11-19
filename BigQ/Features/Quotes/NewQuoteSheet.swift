@@ -84,11 +84,7 @@ struct NewQuoteSheet: View {
         .fixedSize(horizontal: false, vertical: true)
         .studioActive()
         .focusedSceneValue(\.invoiceEditorActive, true)
-        .alert("Pay link", isPresented: $showPayResult) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(payLink.message.isEmpty ? "Couldn’t create the pay link." : payLink.message)
-        }
+        .payLinkResultAlert(isPresented: $showPayResult, model: payLink)
         .sheet(item: $jobEditor) { launch in
             JobEditorSheet(contacts: contacts, contact: draft.pricing.contact, job: launch.job) { saved in
                 draft.pricing.contact = saved.contact ?? draft.pricing.contact
@@ -286,12 +282,15 @@ struct NewQuoteSheet: View {
         HStack {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
+                .help("Close without saving")
             Button("Save Draft") { save(markSent: false) }
                 .disabled(!draft.canSave || numberTaken)
+                .help("Save this quote as a draft")
             Button("Save & Mark Sent") { save(markSent: true) }
                 .buttonStyle(.borderedProminent)
                 .disabled(!draft.canSave || numberTaken)
                 .keyboardShortcut(.defaultAction)
+                .help("Save and mark this quote sent")
         }
     }
 

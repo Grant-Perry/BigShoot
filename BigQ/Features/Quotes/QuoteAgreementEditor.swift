@@ -100,6 +100,7 @@ struct QuoteAgreementEditor: View {
                             presentAskInterview(prompts: AgreementAskField.prompts(in: session.html))
                         }
                     }
+                    .help("Answer the gold Ask fields")
                 }
                 if !templates.isEmpty {
                     Menu("Use template") {
@@ -107,8 +108,10 @@ struct QuoteAgreementEditor: View {
                             Button(template.displayTitle) {
                                 beginApply(template)
                             }
+                            .help("Replace the agreement with \(template.displayTitle)")
                         }
                     }
+                    .help("Replace the agreement with a template")
                 }
                 if hasBody {
                     Button("Clear", role: .destructive) {
@@ -116,6 +119,7 @@ struct QuoteAgreementEditor: View {
                         onClear()
                         refreshChromeFlags(from: "")
                     }
+                    .help("Clear this agreement")
                 }
             }
             TextField("Title", text: $title)

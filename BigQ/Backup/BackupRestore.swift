@@ -363,6 +363,8 @@ enum BackupRestore {
             job.status = record.status
             job.archived = record.archived
             job.contact = record.contactID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
+            job.bride = record.brideID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
+            job.groom = record.groomID.flatMap { contacts.existing(archiveID: $0, shootqID: nil) }
             job.paymentScheduleModeRaw =
                 record.paymentScheduleMode ?? QuotePaymentScheduleMode.none.rawValue
             Array(job.paymentTerms).forEach(context.delete)

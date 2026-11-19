@@ -197,8 +197,8 @@ enum QuotePaymentSchedule {
         return title.isEmpty ? "Payment \(index + 1)" : title
     }
 
-    /// Row value for a term: "amount · due".
-    static func summaryValue(_ term: DraftPaymentTerm) -> String {
+    /// Row value for a term: "amount · due". A relative due date includes the calendar day.
+    static func summaryValue(_ term: DraftPaymentTerm, eventDate: Date? = nil) -> String {
         let amountLabel: String
         switch term.amountMode {
         case .percentOfTotal where term.amount == 0 && term.percent != 0:
@@ -208,16 +208,35 @@ enum QuotePaymentSchedule {
         default:
             amountLabel = StudioMoney.string(term.amount)
         }
-        let due: String
+        return "\(amountLabel) · \(duePhrase(term, eventDate: eventDate))"
+    }
+
+    /// "90 days before event - July 5, 2027". Without an event date, the relative phrase only.
+    static func duePhrase(_ term: DraftPaymentTerm, eventDate: Date?) -> String {
         switch term.dueMode {
         case .signature:
-            due = "at signature"
+            return "at signature"
         case .daysBeforeEvent:
-            due = "\(term.daysBeforeEvent) days before event"
+            let relative = term.daysBeforeEvent == 1
+                ? "1 day before event"
+                : "\(term.daysBeforeEvent) days before event"
+            guard let due = resolveDue(term, signatureDate: nil, eventDate: eventDate) else {
+                return relative
+            }
+            return "\(relative) - \(longDate(due))"
         case .fixedDate:
-            due = StudioDay.string(term.fixedDueDate)
+            return longDate(term.fixedDueDate)
         }
-        return "\(amountLabel) · \(due)"
+    }
+
+    /// "July 5, 2027".
+    static func longDate(_ date: Date, calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "MMMM d, yyyy"
+        return formatter.string(from: date)
     }
 
     static func drafts(from job: Job) -> [DraftPaymentTerm] {

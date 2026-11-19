@@ -57,9 +57,11 @@ struct DashboardInvoiceLedger: View {
             Button("Invoice Desk", systemImage: "doc.text", action: onShowInvoices)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help("Open the invoice desk")
             Button("New Invoice", systemImage: "plus", action: onNewInvoice)
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help("New invoice")
         }
     }
 

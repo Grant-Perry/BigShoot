@@ -141,10 +141,12 @@ private struct TaxScheduleSheet: View {
             }
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .help("Close without saving")
                 Spacer()
                 Button("Add", action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help("Add this tax rate")
             }
         }
         .padding(24)

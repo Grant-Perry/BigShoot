@@ -25,6 +25,7 @@ struct StudioColumnSearch: View {
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
                     .foregroundStyle(.tertiary)
+                    .help("Clear search")
                 }
             }
             .padding(.horizontal, 8)

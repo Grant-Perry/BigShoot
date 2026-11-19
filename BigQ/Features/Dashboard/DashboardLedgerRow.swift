@@ -78,6 +78,7 @@ struct DashboardLedgerRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .help(invoice.canEditLines ? "Edit this invoice" : "Open this invoice")
             .accessibilityHint(invoice.canEditLines ? "Edits this invoice" : "Opens this invoice")
 
             if invoice.canRecordPayment {
@@ -97,11 +98,14 @@ struct DashboardLedgerRow: View {
         .contextMenu {
             if invoice.canEditLines {
                 Button("Edit", systemImage: "pencil", action: onSelect)
+                    .help("Edit this invoice")
             }
             if invoice.canRecordPayment {
                 Button("Record Payment", systemImage: "dollarsign.circle", action: onPay)
+                    .help("Record a payment")
             }
             Button("Open in Invoices", systemImage: "doc.text", action: onOpen)
+                .help("Open this invoice")
         }
     }
 

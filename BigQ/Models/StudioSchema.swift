@@ -165,6 +165,30 @@ enum StudioSchemaV14: VersionedSchema {
     }
 }
 
+/// Quote letters and reusable email templates.
+/// Opened directly so the new models migrate in place.
+enum StudioSchemaV15: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(15, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV14.models + [QuoteEmail.self, EmailTemplate.self]
+    }
+}
+
+/// Bride and groom on a job, both ordinary contacts.
+/// Opened directly so the new relationships migrate in place.
+enum StudioSchemaV16: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(16, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV15.models
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

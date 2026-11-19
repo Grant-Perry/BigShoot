@@ -45,15 +45,18 @@ struct StudioBrandDetailView: View {
             if !studio.isPrimary {
                 ToolbarItem {
                     Button("Make Primary", action: makePrimary)
+                        .help("Use this studio on new invoices and quotes")
                 }
             }
             ToolbarItem {
                 Button(studio.archived ? "Unarchive" : "Archive", action: toggleArchive)
                     .disabled(!studio.archived && !StudioBrandDirectory.canArchive(studio, among: studios))
+                    .help(studio.archived ? "Put this studio back in the list" : "Hide this studio from the active list")
             }
             if StudioBrandDirectory.canDelete(among: studios) {
                 ToolbarItem {
                     Button("Delete", role: .destructive) { confirmDelete = true }
+                        .help("Delete this studio")
                 }
             }
         }
@@ -63,7 +66,9 @@ struct StudioBrandDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Delete Studio", role: .destructive, action: deleteStudio)
+                .help("Delete this studio")
             Button("Cancel", role: .cancel) {}
+                .help("Keep this studio")
         } message: {
             Text("Invoices stay on the books and move to the remaining primary studio. This cannot be undone.")
         }

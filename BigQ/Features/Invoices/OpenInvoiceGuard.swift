@@ -39,6 +39,7 @@ struct OpenInvoiceGuard: View {
             }
             Button(continueTitle, action: onContinue)
                 .buttonStyle(.bordered)
+                .help(continueTitle)
         }
         .padding(StudioDesign.Spacing.card)
         .paperCard()
@@ -48,6 +49,7 @@ struct OpenInvoiceGuard: View {
     private func openButton(_ invoice: Invoice, isDefault: Bool) -> some View {
         let button = Button("Open it") { onOpen(invoice) }
             .buttonStyle(.borderedProminent)
+            .help("Open \(invoice.displayNumber)")
         if isDefault {
             button.keyboardShortcut(.defaultAction)
         } else {
@@ -71,6 +73,7 @@ struct OpenInvoiceAcknowledgement: View {
                     onOpen(invoice)
                 }
                 .buttonStyle(.borderless)
+                .help("Open \(invoice.displayNumber)")
             }
         }
     }

@@ -122,6 +122,8 @@ struct BackupFile: Codable, Sendable, Equatable {
         var status: String
         var archived: Bool
         var contactID: String?
+        var brideID: String?
+        var groomID: String?
         var paymentScheduleMode: String?
         var paymentTerms: [QuotePaymentTerm]?
     }

@@ -66,6 +66,7 @@ struct StudioRootView: View {
         }
         .alert("Could not export", isPresented: exportPresented) {
             Button("OK", role: .cancel) {}
+                .help("Dismiss")
         } message: {
             Text(exportError ?? "")
         }
@@ -78,6 +79,7 @@ struct StudioRootView: View {
             }
             importModel.offerIfNeeded()
             await ShootQImporter(context: modelContext) { _, _ in }.importContractsIfNeeded()
+            await ShootQImporter(context: modelContext) { _, _ in }.linkCouplesIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .bigQNewItem)) { _ in
             showNewItemChooser = true

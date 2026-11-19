@@ -40,6 +40,7 @@ struct StudioLogoPhotoActions: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .help(title)
         .onHover { hovering in
             if hovering {
                 hoveredTitle = title

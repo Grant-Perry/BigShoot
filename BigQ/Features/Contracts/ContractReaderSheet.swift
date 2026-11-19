@@ -31,9 +31,11 @@ struct ContractReaderSheet: View {
                             onEdit()
                         }
                     }
+                    .help("Edit this agreement")
                 }
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .help("Close")
             }
 
             VStack(alignment: .leading, spacing: 6) {

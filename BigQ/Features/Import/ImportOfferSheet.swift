@@ -39,20 +39,24 @@ struct ImportOfferSheet: View {
                 if model.summary == nil {
                     Button("Not Now", action: model.decline)
                         .disabled(model.isImporting)
+                        .help("Skip import for now")
                     Spacer()
                     Button("Choose Folder…") {
                         Task { await model.chooseAnother(context: modelContext) }
                     }
                     .disabled(model.isImporting)
+                    .help("Choose a ShootQ export folder")
                     Button("Import") {
                         Task { await model.importPreferred(context: modelContext) }
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.isImporting)
+                    .help("Import this folder")
                 } else {
                     Spacer()
                     Button("Done") { model.isPresentingOffer = false }
                         .keyboardShortcut(.defaultAction)
+                        .help("Close")
                 }
             }
         }

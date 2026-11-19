@@ -120,6 +120,8 @@ enum BackupExport {
             status: job.status,
             archived: job.archived,
             contactID: link(job.contact?.archiveID),
+            brideID: link(job.bride?.archiveID),
+            groomID: link(job.groom?.archiveID),
             paymentScheduleMode: job.paymentScheduleModeRaw,
             paymentTerms: job.sortedPaymentTerms.map { term in
                 BackupFile.QuotePaymentTerm(

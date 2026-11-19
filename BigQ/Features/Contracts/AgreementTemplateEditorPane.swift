@@ -32,12 +32,14 @@ struct AgreementTemplateEditorPane: View {
                         .foregroundStyle(StudioDesign.paid)
                 }
                 Button("Delete", role: .destructive, action: onDelete)
+                    .help("Delete this template")
                 Button("Save") {
                     session.pullFromTextView()
                     onSave(session.html)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("s", modifiers: .command)
+                .help("Save this template")
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)

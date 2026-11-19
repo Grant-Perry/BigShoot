@@ -452,6 +452,35 @@ struct BigQTests {
         #expect(resolved == "Frank Engel · engelatnona@aol.com · 555-1212 · 9 Bride Lane")
     }
 
+    @Test func mergeUsesStoredValuesAndSkipsScreenPlaceholders() {
+        let contact = Contact(fullName: "Frank Engel", companyName: "")
+        let job = Job(name: "  ", jobType: "Wedding")
+        let studio = StudioBrand(name: "  ", email: "studio@grantdeb.com")
+        let quote = Quote(number: "  ", total: 80, billToName: "")
+        let ctx = AgreementMerge.context(contact: contact, job: job, studio: studio, quote: quote)
+        #expect(ctx.clientName == "Frank Engel")
+        #expect(ctx.clientFirstName == "Frank")
+        #expect(ctx.clientLastName == "Engel")
+        #expect(ctx.jobName == "")
+        #expect(ctx.eventDate == "")
+        #expect(ctx.studioName == "")
+        #expect(ctx.quoteNumber == "")
+        #expect(ctx.validUntil == "")
+        #expect(ctx.dateSigned == "")
+        #expect(ctx.clientCompany == "")
+
+        let resolved = AgreementMerge.resolve(
+            "[Job Name]|[Event Date]|[Studio Name]|[Quote Number]|[Company Name]|[Valid Until]",
+            with: ctx
+        )
+        #expect(resolved == "|||||")
+        #expect(!resolved.contains("Untitled"))
+        #expect(!resolved.contains("Unnamed"))
+        #expect(!resolved.contains("Draft"))
+        #expect(!resolved.contains("—"))
+        #expect(ctx.studioEmail == "studio@grantdeb.com")
+    }
+
     @Test func selectingAJobAdoptsItsAttachedAgreement() throws {
         let container = try makeBooksContainer()
         let context = container.mainContext
@@ -555,6 +584,24 @@ struct BigQTests {
         #expect(!live.contains("[Terms]"))
         #expect(live.contains("50% due at signing"))
         #expect(live.contains("25% 90 days prior"))
+    }
+
+    @Test func paymentDuePhraseIncludesCalendarDate() {
+        let event = Calendar.current.date(from: DateComponents(year: 2027, month: 10, day: 3))!
+        let ninety = DraftPaymentTerm(
+            amountMode: .percentOfTotal,
+            percent: 25,
+            dueMode: .daysBeforeEvent,
+            daysBeforeEvent: 90
+        )
+        let thirty = DraftPaymentTerm(
+            amountMode: .remainingBalance,
+            dueMode: .daysBeforeEvent,
+            daysBeforeEvent: 30
+        )
+        #expect(QuotePaymentSchedule.duePhrase(ninety, eventDate: event) == "90 days before event - July 5, 2027")
+        #expect(QuotePaymentSchedule.duePhrase(thirty, eventDate: event) == "30 days before event - September 3, 2027")
+        #expect(QuotePaymentSchedule.duePhrase(ninety, eventDate: nil) == "90 days before event")
     }
 
     @Test func agreementFieldTableKeepsValueOnSameLineAsLabel() {
@@ -1797,6 +1844,103 @@ struct BigQTests {
     private struct StoredContract: Decodable {
         var id: Int
         var contents: String
+    }
+
+    @Test func proposalLetterHydratesAgreementVariables() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let studio = StudioBrand(
+            name: "Grant & Deb Photographers",
+            email: "studio@grantdeb.com",
+            phone: "(757) 772-0914",
+            address: "5912 Huntington Ave.\nNewport News, VA. 23607"
+        )
+        let job = Job(name: "Sierra + Josh (Moberg-Woodson) Wedding")
+        let due = Decimal(string: "2702.44")!
+        let quote = Quote(
+            number: "1325",
+            total: due,
+            billToName: "Frank Engel",
+            agreementHTML: "<p>Sign</p>"
+        )
+        quote.payToken = "d3a9c31de405cebbd"
+        context.insert(studio)
+        context.insert(job)
+        context.insert(quote)
+        quote.studio = studio
+        quote.job = job
+
+        let amount = StudioMoney.string(due)
+        let body = QuoteMailMerge.letter(for: quote, signingSteps: true)
+        #expect(body.contains("Hello Frank Engel,"))
+        #expect(body.contains("quote 1325 for Sierra + Josh (Moberg-Woodson) Wedding"))
+        #expect(body.contains("pay \(amount) here"))
+        #expect(body.contains(QuoteMailMerge.payLinkPhrase))
+        let html = QuoteMailMerge.htmlLetter(body, quote: quote)
+        #expect(html.contains("<a href=\"https://bigq-pay.web.app/pay/d3a9c31de405cebbd\">You can pay your retainer here</a>"))
+        #expect(!html.contains(">https://"))
+        #expect(body.contains("Grant & Deb Photographers"))
+        #expect(body.contains("studio@grantdeb.com"))
+        #expect(!body.contains("http"))
+        #expect(!body.contains("[Client Name]"))
+        #expect(!body.contains("[Retainer]"))
+        #expect(!body.contains("[Pay Link]"))
+
+        let stored = QuoteMailMerge.templatize(body, quote: quote)
+        #expect(stored.contains("[Client Name]"))
+        #expect(stored.contains("[Quote Number]"))
+        #expect(stored.contains("[Job Name]"))
+        #expect(stored.contains("[Studio Name]"))
+        #expect(stored.contains("[Retainer]"))
+        #expect(QuoteMailMerge.fill("[Retainer]", quote: quote) == amount)
+        #expect(stored.contains("[Pay Link]"))
+        #expect(stored.contains("[Letterhead]"))
+        #expect(!stored.contains("Frank Engel"))
+        #expect(!stored.contains("1325"))
+        #expect(!stored.contains(amount))
+        #expect(QuoteMailMerge.fill(stored, quote: quote) == body)
+
+        let legacy = QuoteMailMerge.fill("Hello [Client], quote [Quote] is [Amount]. [Pay Link]", quote: quote)
+        #expect(legacy == "Hello Frank Engel, quote 1325 is \(amount). \(QuoteMailMerge.payLinkPhrase)")
+
+        let proposal = QuoteMailMerge.letter(for: quote, signingSteps: false)
+        #expect(proposal.contains("Thank you for considering Grant & Deb Photographers"))
+        #expect(proposal.contains(QuoteMailMerge.payLinkPhrase))
+        #expect(!proposal.contains("http"))
+
+        let subject = QuoteMailMerge.subject(for: quote)
+        #expect(subject == "Quote 1325 from Grant & Deb Photographers")
+        #expect(QuoteMailMerge.fill(QuoteMailMerge.templatize(subject, quote: quote), quote: quote) == subject)
+
+        let quietQuote = Quote(number: "9", total: 0, billToName: "Ada")
+        context.insert(quietQuote)
+        let quiet = QuoteMailMerge.letter(for: quietQuote, signingSteps: false)
+        #expect(quiet.contains("Please look it over"))
+        #expect(!quiet.contains(QuoteMailMerge.payLinkPhrase))
+        #expect(!quiet.contains("[Pay Link]"))
+    }
+
+    @Test func coupleNamesComeFromTheContacts() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let bride = Contact(firstName: "Cindy", lastName: "Miller", fullName: "Cindy Miller")
+        let groom = Contact(firstName: "Brent", lastName: "Jones", fullName: "Brent Jones")
+        let job = Job(name: "Cindy + Brent (Miller/Jones) Wedding", contact: bride)
+        job.bride = bride
+        job.groom = groom
+        let quote = Quote(number: "12", total: 100, billToName: "Cindy Miller")
+        context.insert(bride)
+        context.insert(groom)
+        context.insert(job)
+        context.insert(quote)
+        quote.job = job
+
+        #expect(QuoteMailMerge.fill("[Bride First Name]", quote: quote) == "Cindy")
+        #expect(QuoteMailMerge.fill("[Bride Last Name]", quote: quote) == "Miller")
+        #expect(QuoteMailMerge.fill("[Groom First Name]", quote: quote) == "Brent")
+        #expect(QuoteMailMerge.fill("[Groom Last Name]", quote: quote) == "Jones")
+        #expect(QuoteMailMerge.fill("[First+First Couple]", quote: quote) == "Cindy + Brent")
+        #expect(QuoteMailMerge.fill("Hello [First+First Couple],", quote: quote) == "Hello Cindy + Brent,")
     }
 
     private func makeBooksContainer() throws -> ModelContainer {

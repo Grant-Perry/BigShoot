@@ -1,23 +1,79 @@
 import Darwin
 import Foundation
 
+struct PayLinkInstallment: Equatable, Sendable {
+    var label: String
+    var due: String
+    var amount: String
+}
+
+struct PayLinkDue: Equatable, Sendable {
+    var amount: Decimal
+    /// Everything still owed on the quote or invoice, including later installments.
+    var balance: Decimal
+    /// A scheduled installment, or the amount still owed when nothing is scheduled ahead of it.
+    var kind: Kind
+    /// Installments after the one this link collects, with when each is due.
+    var later: [PayLinkInstallment]
+
+    enum Kind: String, Sendable {
+        case payment
+        case balance
+    }
+}
+
 enum PayLinkAmount {
     /// The next unpaid scheduled amount, or the whole balance when there is no schedule.
-    static func forQuote(_ quote: Quote) -> Decimal {
-        if let due = quote.sortedPaymentTerms.first(where: { $0.amount > 0 })?.amount {
-            return due
+    static func forQuote(_ quote: Quote) -> PayLinkDue {
+        let terms = quote.sortedPaymentTerms.filter { $0.amount > 0 }
+        let eventDate = quote.job?.eventDate
+        if let due = terms.first?.amount {
+            let later = terms.dropFirst().map { installment($0, eventDate: eventDate) }
+            return PayLinkDue(amount: due, balance: quote.total, kind: .payment, later: later)
         }
-        return quote.total
+        return PayLinkDue(amount: quote.total, balance: quote.total, kind: .balance, later: [])
     }
 
-    static func forInvoice(_ invoice: Invoice) -> Decimal {
+    static func forInvoice(_ invoice: Invoice) -> PayLinkDue {
         let open = invoice.schedule
             .filter { $0.balance > 0 }
             .sorted { ($0.due ?? .distantFuture) < ($1.due ?? .distantFuture) }
         if let due = open.first?.balance, due > 0 {
-            return due
+            let later = open.dropFirst().enumerated().map { offset, entry in
+                PayLinkInstallment(
+                    label: entry.due.map(StudioDay.string) ?? "Payment \(offset + 2)",
+                    due: "",
+                    amount: PayMoney.wire(entry.balance)
+                )
+            }
+            return PayLinkDue(amount: due, balance: invoice.balance, kind: .payment, later: later)
         }
-        return invoice.balance
+        return PayLinkDue(amount: invoice.balance, balance: invoice.balance, kind: .balance, later: [])
+    }
+
+    private static func installment(_ term: QuotePaymentTerm, eventDate: Date?) -> PayLinkInstallment {
+        let title = term.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = title.isEmpty ? "Payment \(term.position + 1)" : title
+        let draft = DraftPaymentTerm(
+            title: term.title,
+            amountMode: term.amountMode,
+            percent: term.percent,
+            fixedAmount: term.fixedAmount,
+            dueMode: term.dueMode,
+            daysBeforeEvent: term.daysBeforeEvent,
+            fixedDueDate: term.fixedDueDate ?? .now,
+            amount: term.amount
+        )
+        let due: String
+        switch term.dueMode {
+        case .signature:
+            due = "At signature"
+        case .daysBeforeEvent:
+            due = QuotePaymentSchedule.duePhrase(draft, eventDate: eventDate)
+        case .fixedDate:
+            due = StudioDay.string(term.fixedDueDate)
+        }
+        return PayLinkInstallment(label: label, due: due, amount: PayMoney.wire(term.amount))
     }
 }
 
@@ -148,21 +204,29 @@ struct PayAPI: Sendable {
         invoiceId: String,
         number: String,
         amount: String,
+        amountKind: PayLinkDue.Kind,
+        balance: String,
+        schedule: [PayLinkInstallment],
         billToName: String,
-        studioName: String
+        studioName: String,
+        replace: Bool = false
     ) async throws -> PayLinkSnapshot {
-        try await send(
-            path: "/api/links",
-            method: "POST",
-            body: [
-                "invoiceId": invoiceId,
-                "number": number,
-                "amount": amount,
-                "billToName": billToName,
-                "studioName": studioName,
-            ],
-            authorized: true
-        )
+        var payload: [String: Any] = [
+            "invoiceId": invoiceId,
+            "number": number,
+            "amount": amount,
+            "amountKind": amountKind.rawValue,
+            "balance": balance,
+            "billToName": billToName,
+            "studioName": studioName,
+        ]
+        if !schedule.isEmpty {
+            payload["schedule"] = schedule.map {
+                ["label": $0.label, "due": $0.due, "amount": $0.amount]
+            }
+        }
+        if replace { payload["replace"] = true }
+        return try await send(path: "/api/links", method: "POST", body: payload, authorized: true)
     }
 
     func status(invoiceId: String) async throws -> PayLinkSnapshot {
@@ -177,7 +241,7 @@ struct PayAPI: Sendable {
     private func send(
         path: String,
         method: String,
-        body: [String: String]?,
+        body: [String: Any]?,
         authorized: Bool
     ) async throws -> PayLinkSnapshot {
         var request = URLRequest(url: endpoint(path))

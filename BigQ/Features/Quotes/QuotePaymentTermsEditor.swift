@@ -14,6 +14,7 @@ struct QuotePaymentTermsSection: View {
                 Button(draft.paymentScheduleMode == .none ? "Add Schedule…" : "Edit Schedule…") {
                     showBuilder = true
                 }
+                .help(draft.paymentScheduleMode == .none ? "Add a payment schedule" : "Edit the payment schedule")
             }
             switch draft.paymentScheduleMode {
             case .none:
@@ -24,7 +25,7 @@ struct QuotePaymentTermsSection: View {
                 StudioLabeledStack {
                     ForEach(Array(draft.paymentTerms.enumerated()), id: \.element.id) { index, term in
                         StudioLabeledRow(QuotePaymentSchedule.summaryLabel(term, index: index)) {
-                            Text(QuotePaymentSchedule.summaryValue(term))
+                            Text(QuotePaymentSchedule.summaryValue(term, eventDate: draft.pricing.job?.eventDate))
                         }
                     }
                 }
@@ -145,6 +146,7 @@ struct PaymentScheduleSheet: View {
                 .font(StudioDesign.displayTitle)
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
+                .help("Close without saving")
         }
         .padding(20)
     }
@@ -188,6 +190,7 @@ struct PaymentScheduleSheet: View {
             )
         }
         .buttonStyle(.plain)
+        .help(subtitle)
     }
 
     private var scheduledSection: some View {
@@ -206,6 +209,7 @@ struct PaymentScheduleSheet: View {
                 mode = .scheduled
             }
             .buttonStyle(.borderedProminent)
+            .help("Split the total into equal payments")
 
             if scheduleMode == .scheduled {
                 Text("Amounts stay equal. Change any due date — they don’t have to stay monthly.")
@@ -240,16 +244,18 @@ struct PaymentScheduleSheet: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(term.title.isEmpty ? "Untitled" : term.title)
-                        Text(QuotePaymentSchedule.summaryValue(term))
+                        Text(QuotePaymentSchedule.summaryValue(term, eventDate: eventDate))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Edit") { editingCustom = term }
+                        .help("Edit this payment")
                     Button("Remove", role: .destructive) {
                         paymentTerms.removeAll { $0.id == term.id }
                         refreshAmounts()
                     }
+                    .help("Remove this payment")
                 }
                 .padding(.vertical, 4)
             }
@@ -261,6 +267,7 @@ struct PaymentScheduleSheet: View {
                     dueMode: .signature
                 )
             }
+            .help("Add a payment")
             completeness
         }
     }
@@ -288,6 +295,7 @@ struct PaymentScheduleSheet: View {
                 onCommit?()
                 dismiss()
             }
+            .help("Remove the payment schedule")
             Spacer()
             Button("Done") {
                 if mode == .scheduled {
@@ -301,6 +309,7 @@ struct PaymentScheduleSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
+            .help("Save the payment schedule")
             .disabled(
                 (mode != .none && !paymentTerms.isEmpty)
                     && !QuotePaymentSchedule.isComplete(paymentTerms, total: total)
@@ -372,7 +381,7 @@ private struct CustomPaymentTermEditor: View {
                                 signatureDate: nil,
                                 eventDate: eventDate
                             ) {
-                                Text("· \(StudioDay.string(due))")
+                                Text("· \(QuotePaymentSchedule.longDate(due))")
                                     .foregroundStyle(.secondary)
                             } else {
                                 Text("· Set event date on the job to preview")
@@ -392,12 +401,14 @@ private struct CustomPaymentTermEditor: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
+                    .help("Close without saving")
                 Button("Save") {
                     term.daysBeforeEvent = min(730, max(0, term.daysBeforeEvent))
                     onSave(term)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
+                .help("Save this payment")
             }
         }
         .padding(24)

@@ -54,9 +54,11 @@ struct ContractListSection: View {
                 }
                 pendingDelete = nil
             }
+            .help("Remove this agreement")
             Button("Cancel", role: .cancel) {
                 pendingDelete = nil
             }
+            .help("Keep this agreement")
         } message: {
             Text(deleteMessage)
         }
@@ -95,16 +97,19 @@ struct ContractListSection: View {
             Button("View", systemImage: "doc.richtext") {
                 reading = contract
             }
+            .help("Read this agreement")
             if let onEdit, canEdit(contract) {
                 Button("Edit", systemImage: "pencil") {
                     onEdit(contract)
                 }
+                .help("Edit this agreement")
             }
             if onDelete != nil {
                 Divider()
                 Button("Remove", systemImage: "trash", role: .destructive) {
                     pendingDelete = contract
                 }
+                .help("Remove this agreement from the job")
             }
         }
     }
