@@ -16,9 +16,13 @@ struct BackupManifest: Codable, Sendable, Equatable {
         var quotes: Int
         var contracts: Int
         var events: Int
+        var quoteEmails: Int
+        var invoiceEmails: Int
+        var emailTemplates: Int
 
         enum CodingKeys: String, CodingKey {
             case studios, contacts, jobs, catalog, taxSchedules, invoices, quotes, contracts, events
+            case quoteEmails, invoiceEmails, emailTemplates
         }
 
         init(
@@ -30,7 +34,10 @@ struct BackupManifest: Codable, Sendable, Equatable {
             invoices: Int,
             quotes: Int = 0,
             contracts: Int,
-            events: Int
+            events: Int,
+            quoteEmails: Int = 0,
+            invoiceEmails: Int = 0,
+            emailTemplates: Int = 0
         ) {
             self.studios = studios
             self.contacts = contacts
@@ -41,6 +48,9 @@ struct BackupManifest: Codable, Sendable, Equatable {
             self.quotes = quotes
             self.contracts = contracts
             self.events = events
+            self.quoteEmails = quoteEmails
+            self.invoiceEmails = invoiceEmails
+            self.emailTemplates = emailTemplates
         }
 
         init(from decoder: Decoder) throws {
@@ -54,6 +64,9 @@ struct BackupManifest: Codable, Sendable, Equatable {
             quotes = try container.decodeIfPresent(Int.self, forKey: .quotes) ?? 0
             contracts = try container.decode(Int.self, forKey: .contracts)
             events = try container.decode(Int.self, forKey: .events)
+            quoteEmails = try container.decodeIfPresent(Int.self, forKey: .quoteEmails) ?? 0
+            invoiceEmails = try container.decodeIfPresent(Int.self, forKey: .invoiceEmails) ?? 0
+            emailTemplates = try container.decodeIfPresent(Int.self, forKey: .emailTemplates) ?? 0
         }
 
         func encode(to encoder: Encoder) throws {
@@ -67,6 +80,9 @@ struct BackupManifest: Codable, Sendable, Equatable {
             try container.encode(quotes, forKey: .quotes)
             try container.encode(contracts, forKey: .contracts)
             try container.encode(events, forKey: .events)
+            try container.encode(quoteEmails, forKey: .quoteEmails)
+            try container.encode(invoiceEmails, forKey: .invoiceEmails)
+            try container.encode(emailTemplates, forKey: .emailTemplates)
         }
 
         func sentence(for scope: BackupScope) -> String {
@@ -77,6 +93,7 @@ struct BackupManifest: Codable, Sendable, Equatable {
                     BackupList.count(contacts, "client", "clients"),
                     BackupList.count(jobs, "job", "jobs"),
                     BackupList.count(quotes, "quote", "quotes"),
+                    BackupList.count(quoteEmails + invoiceEmails, "letter", "letters"),
                     BackupList.count(invoices, "invoice", "invoices"),
                     BackupList.count(catalog, "catalog item", "catalog items"),
                     BackupList.count(contracts, "contract", "contracts"),
@@ -87,6 +104,7 @@ struct BackupManifest: Codable, Sendable, Equatable {
                     BackupList.count(contacts, "client", "clients"),
                     BackupList.count(jobs, "job", "jobs"),
                     BackupList.count(quotes, "quote", "quotes"),
+                    BackupList.count(quoteEmails + invoiceEmails, "letter", "letters"),
                     BackupList.count(invoices, "invoice", "invoices"),
                     BackupList.count(contracts, "contract", "contracts"),
                 ])

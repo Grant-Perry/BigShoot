@@ -6,7 +6,10 @@ struct QuoteEmailPreview: View {
     var subject: String
     var bodyText: String
     var payURL: String
-    var includesAgreement: Bool
+    var payPhrase: String = QuoteMailMerge.payLinkPhrase
+    var documentTitle: String = "Quote PDF"
+    var includesAgreement: Bool = false
+    var extraNames: [String] = []
 
     @Environment(\.dismiss) private var dismiss
 
@@ -57,7 +60,7 @@ struct QuoteEmailPreview: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            if bodyText.contains(QuoteMailMerge.payLinkPhrase), payURL.isEmpty {
+            if bodyText.contains(payPhrase), payURL.isEmpty {
                 Text("The pay link is created when you send.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -72,10 +75,14 @@ struct QuoteEmailPreview: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Attachments", systemImage: "paperclip")
                 .font(.headline)
-            Label("Quote PDF", systemImage: "doc.richtext")
+            Label(documentTitle, systemImage: "doc.richtext")
                 .font(.callout)
             if includesAgreement {
                 Label("Agreement PDF", systemImage: "signature")
+                    .font(.callout)
+            }
+            ForEach(Array(extraNames.enumerated()), id: \.offset) { _, name in
+                Label(name, systemImage: "paperclip")
                     .font(.callout)
             }
         }
@@ -96,7 +103,7 @@ struct QuoteEmailPreview: View {
         var copy = AttributedString(paragraph)
         guard let url = URL(string: payURL), !payURL.isEmpty else { return Text(copy) }
         var search = copy.startIndex
-        while let range = copy[search...].range(of: QuoteMailMerge.payLinkPhrase) {
+        while let range = copy[search...].range(of: payPhrase) {
             copy[range].link = url
             copy[range].underlineStyle = .single
             copy[range].foregroundColor = StudioDesign.gold

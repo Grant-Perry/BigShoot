@@ -12,13 +12,16 @@ struct BackupFile: Codable, Sendable, Equatable {
     var taxSchedules: [TaxSchedule]
     var invoices: [Invoice]
     var quotes: [Quote]
+    var quoteEmails: [QuoteEmail]
+    var invoiceEmails: [InvoiceEmail]
+    var emailTemplates: [EmailTemplate]
     var contracts: [Contract]
     var events: [BooksEvent]
     var preferences: BackupPreferences?
 
     enum CodingKeys: String, CodingKey {
         case format, scope, createdAt, studios, contacts, jobs, catalog, taxSchedules
-        case invoices, quotes, contracts, events, preferences
+        case invoices, quotes, quoteEmails, invoiceEmails, emailTemplates, contracts, events, preferences
     }
 
     init(
@@ -32,6 +35,9 @@ struct BackupFile: Codable, Sendable, Equatable {
         taxSchedules: [TaxSchedule],
         invoices: [Invoice],
         quotes: [Quote] = [],
+        quoteEmails: [QuoteEmail] = [],
+        invoiceEmails: [InvoiceEmail] = [],
+        emailTemplates: [EmailTemplate] = [],
         contracts: [Contract],
         events: [BooksEvent],
         preferences: BackupPreferences?
@@ -46,6 +52,9 @@ struct BackupFile: Codable, Sendable, Equatable {
         self.taxSchedules = taxSchedules
         self.invoices = invoices
         self.quotes = quotes
+        self.quoteEmails = quoteEmails
+        self.invoiceEmails = invoiceEmails
+        self.emailTemplates = emailTemplates
         self.contracts = contracts
         self.events = events
         self.preferences = preferences
@@ -63,6 +72,9 @@ struct BackupFile: Codable, Sendable, Equatable {
         taxSchedules = try container.decode([TaxSchedule].self, forKey: .taxSchedules)
         invoices = try container.decode([Invoice].self, forKey: .invoices)
         quotes = try container.decodeIfPresent([Quote].self, forKey: .quotes) ?? []
+        quoteEmails = try container.decodeIfPresent([QuoteEmail].self, forKey: .quoteEmails) ?? []
+        invoiceEmails = try container.decodeIfPresent([InvoiceEmail].self, forKey: .invoiceEmails) ?? []
+        emailTemplates = try container.decodeIfPresent([EmailTemplate].self, forKey: .emailTemplates) ?? []
         contracts = try container.decode([Contract].self, forKey: .contracts)
         events = try container.decode([BooksEvent].self, forKey: .events)
         preferences = try container.decodeIfPresent(BackupPreferences.self, forKey: .preferences)
@@ -80,6 +92,9 @@ struct BackupFile: Codable, Sendable, Equatable {
         try container.encode(taxSchedules, forKey: .taxSchedules)
         try container.encode(invoices, forKey: .invoices)
         try container.encode(quotes, forKey: .quotes)
+        try container.encode(quoteEmails, forKey: .quoteEmails)
+        try container.encode(invoiceEmails, forKey: .invoiceEmails)
+        try container.encode(emailTemplates, forKey: .emailTemplates)
         try container.encode(contracts, forKey: .contracts)
         try container.encode(events, forKey: .events)
         try container.encodeIfPresent(preferences, forKey: .preferences)
@@ -239,6 +254,51 @@ struct BackupFile: Codable, Sendable, Equatable {
         var lines: [Line]
     }
 
+    struct QuoteEmail: Codable, Sendable, Equatable {
+        var quoteID: String
+        var createdAt: Date
+        var updatedAt: Date
+        var sentAt: Date?
+        var state: String
+        var recipient: String
+        var subject: String
+        var body: String
+        var templateName: String
+        var attachAgreement: Bool
+        var payURL: String
+        var postmarkMessageID: String
+        var attachments: [Attachment]? = nil
+    }
+
+    struct InvoiceEmail: Codable, Sendable, Equatable {
+        var invoiceID: String
+        var createdAt: Date
+        var updatedAt: Date
+        var sentAt: Date?
+        var state: String
+        var recipient: String
+        var subject: String
+        var body: String
+        var templateName: String
+        var payURL: String
+        var postmarkMessageID: String
+        var attachments: [Attachment]? = nil
+    }
+
+    struct Attachment: Codable, Sendable, Equatable {
+        var fileName: String
+        var contentType: String
+        var mediaFile: String
+    }
+
+    struct EmailTemplate: Codable, Sendable, Equatable {
+        var name: String
+        var subject: String
+        var body: String
+        var createdAt: Date
+        var updatedAt: Date
+    }
+
     struct QuotePaymentTerm: Codable, Sendable, Equatable {
         var title: String
         var position: Int
@@ -295,7 +355,10 @@ struct BackupFile: Codable, Sendable, Equatable {
             invoices: invoices.count,
             quotes: quotes.count,
             contracts: contracts.count,
-            events: events.count
+            events: events.count,
+            quoteEmails: quoteEmails.count,
+            invoiceEmails: invoiceEmails.count,
+            emailTemplates: emailTemplates.count
         )
     }
 }

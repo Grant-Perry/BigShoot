@@ -75,7 +75,10 @@ enum QuoteMailMerge {
 
     /// HTML the client can click. The retainer phrase is the link; the address is the href.
     static func htmlLetter(_ body: String, quote: Quote) -> String {
-        let url = payURL(for: quote)
+        htmlLetter(body, payURL: payURL(for: quote), phrase: payLinkPhrase)
+    }
+
+    static func htmlLetter(_ body: String, payURL: String, phrase: String) -> String {
         let blocks = body
             .replacingOccurrences(of: "\r\n", with: "\n")
             .components(separatedBy: "\n\n")
@@ -83,11 +86,11 @@ enum QuoteMailMerge {
             .filter { !$0.isEmpty }
         let paragraphs = blocks.map { block -> String in
             var html = escapeHTML(block).replacingOccurrences(of: "\n", with: "<br>")
-            if !url.isEmpty {
-                let href = escapeHTML(url)
+            if !payURL.isEmpty {
+                let href = escapeHTML(payURL)
                 html = html.replacingOccurrences(
-                    of: payLinkPhrase,
-                    with: "<a href=\"\(href)\">\(payLinkPhrase)</a>"
+                    of: phrase,
+                    with: "<a href=\"\(href)\">\(phrase)</a>"
                 )
             }
             return "<p style=\"margin: 0 0 16px; line-height: 1.65;\">\(html)</p>"
@@ -106,11 +109,14 @@ enum QuoteMailMerge {
             .replacingOccurrences(of: "\"", with: "&quot;")
     }
 
-    /// Plain-text copy. The address follows the retainer phrase so a text-only client can still open it.
+    /// Plain-text copy. The address follows the pay phrase so a text-only client can still open it.
     static func plainText(_ body: String, quote: Quote) -> String {
-        let url = payURL(for: quote)
-        guard !url.isEmpty, body.contains(payLinkPhrase), !body.contains(url) else { return body }
-        return body.replacingOccurrences(of: payLinkPhrase, with: "\(payLinkPhrase)\n\(url)")
+        plainText(body, payURL: payURL(for: quote), phrase: payLinkPhrase)
+    }
+
+    static func plainText(_ body: String, payURL: String, phrase: String) -> String {
+        guard !payURL.isEmpty, body.contains(phrase), !body.contains(payURL) else { return body }
+        return body.replacingOccurrences(of: phrase, with: "\(phrase)\n\(payURL)")
     }
 
     static func letter(for quote: Quote, signingSteps: Bool) -> String {
@@ -185,7 +191,7 @@ enum QuoteMailMerge {
             result = result.replacingOccurrences(of: signingPay, with: signingFallback)
         }
         result = AgreementMerge.resolve(result, with: context)
-        result = plainFromMerge(result)
+        result = stripHTML(result)
         let amount = StudioMoney.string(PayLinkAmount.forQuote(quote).amount)
         let letterhead = Self.letterhead(for: quote.studio)
         let extras = [
@@ -296,7 +302,7 @@ enum QuoteMailMerge {
     }
 
     /// Studio name, email, phone, and address. Skips the “Unnamed studio” screen label.
-    private static func letterhead(for studio: StudioBrand?) -> String {
+    static func letterhead(for studio: StudioBrand?) -> String {
         guard let studio else { return "" }
         let name = studio.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return ([name] + studio.detailLines).filter { !$0.isEmpty }.joined(separator: "\n")
@@ -308,7 +314,7 @@ enum QuoteMailMerge {
     }
 
     /// Agreement fields such as `[Terms]` arrive as HTML. The letter is plain text until send.
-    private static func plainFromMerge(_ text: String) -> String {
+    static func stripHTML(_ text: String) -> String {
         guard text.contains("<") || text.contains("&") else { return text }
         var result = text
         let breaks = ["<br>", "<br/>", "<br />", "&#8232;", "&#x2028;"]

@@ -189,6 +189,18 @@ enum StudioSchemaV16: VersionedSchema {
     }
 }
 
+/// Invoice letters, and files added to a quote or invoice letter.
+/// Opened directly so the new models migrate in place.
+enum StudioSchemaV17: VersionedSchema {
+    static var versionIdentifier: Schema.Version {
+        Schema.Version(17, 0, 0)
+    }
+
+    static var models: [any PersistentModel.Type] {
+        StudioSchemaV16.models + [InvoiceEmail.self, MailAttachment.self]
+    }
+}
+
 enum StudioMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
         [StudioSchemaV1.self, StudioSchemaV2.self, StudioSchemaV3.self]

@@ -94,6 +94,13 @@ enum BackupPackage {
             guard fileManager.fileExists(atPath: file.path) else { continue }
             media[hash] = try Data(contentsOf: file)
         }
+        let attachmentHashes = file.quoteEmails.flatMap { $0.attachments ?? [] }.map(\.mediaFile)
+            + file.invoiceEmails.flatMap { $0.attachments ?? [] }.map(\.mediaFile)
+        for hash in attachmentHashes where media[hash] == nil {
+            let file = root.appendingPathComponent(mediaFolder).appendingPathComponent(hash)
+            guard fileManager.fileExists(atPath: file.path) else { continue }
+            media[hash] = try Data(contentsOf: file)
+        }
         return BackupPayload(file: file, bodies: bodies, media: media)
     }
 

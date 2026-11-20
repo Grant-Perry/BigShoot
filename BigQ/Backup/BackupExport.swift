@@ -25,7 +25,10 @@ enum BackupExport {
             invoices: try context.fetchCount(FetchDescriptor<Invoice>()),
             quotes: try context.fetchCount(FetchDescriptor<Quote>()),
             contracts: try context.fetchCount(FetchDescriptor<Contract>()),
-            events: try context.fetchCount(FetchDescriptor<BooksEvent>())
+            events: try context.fetchCount(FetchDescriptor<BooksEvent>()),
+            quoteEmails: try context.fetchCount(FetchDescriptor<QuoteEmail>()),
+            invoiceEmails: try context.fetchCount(FetchDescriptor<InvoiceEmail>()),
+            emailTemplates: try context.fetchCount(FetchDescriptor<EmailTemplate>())
         )
     }
 
@@ -58,6 +61,9 @@ enum BackupExport {
             taxSchedules: scope.includesCatalog ? taxes.map(tax).sorted { $0.archiveID < $1.archiveID } : [],
             invoices: scope.includesBooks ? invoices.map(invoice).sorted { $0.archiveID < $1.archiveID } : [],
             quotes: scope.includesBooks ? quotes.map { quote($0, bodies: &bodies, media: &media) }.sorted { $0.archiveID < $1.archiveID } : [],
+            quoteEmails: scope.includesBooks ? try self.quoteEmails(in: context, media: &media) : [],
+            invoiceEmails: scope.includesBooks ? try self.invoiceEmails(in: context, media: &media) : [],
+            emailTemplates: scope.includesBooks ? try self.emailTemplates(in: context) : [],
             contracts: scope.includesBooks ? contracts.map { contract($0, bodies: &bodies) }.sorted { $0.archiveID < $1.archiveID } : [],
             events: scope.includesBooks ? events.map(event).sorted { $0.archiveID < $1.archiveID } : [],
             preferences: scope.includesPreferences ? BackupPreferenceStore.capture(defaults) : nil
@@ -137,6 +143,87 @@ enum BackupExport {
                 )
             }
         )
+    }
+
+    private static func quoteEmails(
+        in context: ModelContext,
+        media: inout [String: Data]
+    ) throws -> [BackupFile.QuoteEmail] {
+        try context.fetch(FetchDescriptor<QuoteEmail>()).map { email in
+            BackupFile.QuoteEmail(
+                quoteID: email.quoteKey,
+                createdAt: email.createdAt,
+                updatedAt: email.updatedAt,
+                sentAt: email.sentAt,
+                state: email.stateRaw,
+                recipient: email.recipient,
+                subject: email.subject,
+                body: email.body,
+                templateName: email.templateName,
+                attachAgreement: email.attachAgreement,
+                payURL: email.payURL,
+                postmarkMessageID: email.postmarkMessageID,
+                attachments: attachmentRecords(email.files, media: &media)
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.quoteID != rhs.quoteID { return lhs.quoteID < rhs.quoteID }
+            return lhs.createdAt < rhs.createdAt
+        }
+    }
+
+    private static func invoiceEmails(
+        in context: ModelContext,
+        media: inout [String: Data]
+    ) throws -> [BackupFile.InvoiceEmail] {
+        try context.fetch(FetchDescriptor<InvoiceEmail>()).map { email in
+            BackupFile.InvoiceEmail(
+                invoiceID: email.invoiceKey,
+                createdAt: email.createdAt,
+                updatedAt: email.updatedAt,
+                sentAt: email.sentAt,
+                state: email.stateRaw,
+                recipient: email.recipient,
+                subject: email.subject,
+                body: email.body,
+                templateName: email.templateName,
+                payURL: email.payURL,
+                postmarkMessageID: email.postmarkMessageID,
+                attachments: attachmentRecords(email.files, media: &media)
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.invoiceID != rhs.invoiceID { return lhs.invoiceID < rhs.invoiceID }
+            return lhs.createdAt < rhs.createdAt
+        }
+    }
+
+    private static func attachmentRecords(
+        _ files: [MailAttachment],
+        media: inout [String: Data]
+    ) -> [BackupFile.Attachment]? {
+        let records = files.sorted { $0.createdAt < $1.createdAt }.compactMap { file -> BackupFile.Attachment? in
+            guard let hash = self.file(for: file.bytes, media: &media) else { return nil }
+            return BackupFile.Attachment(
+                fileName: file.fileName,
+                contentType: file.contentType,
+                mediaFile: hash
+            )
+        }
+        return records.isEmpty ? nil : records
+    }
+
+    private static func emailTemplates(in context: ModelContext) throws -> [BackupFile.EmailTemplate] {
+        try context.fetch(FetchDescriptor<EmailTemplate>()).map { template in
+            BackupFile.EmailTemplate(
+                name: template.name,
+                subject: template.subject,
+                body: template.body,
+                createdAt: template.createdAt,
+                updatedAt: template.updatedAt
+            )
+        }
+        .sorted { $0.name < $1.name }
     }
 
     private static func catalogItem(_ item: CatalogItem) -> BackupFile.CatalogItem {

@@ -34,6 +34,9 @@ struct QuoteEmailComposer: View {
     @State private var templateTitle = ""
     @State private var isSending = false
     @State private var sendError: String?
+    @State private var files: [MailFileDraft]
+    @State private var importingFiles = false
+    @State private var fileError: String?
     @State private var letterInsertion: QuoteLetterInsertion?
     @State private var showingPreview = false
 
@@ -42,6 +45,8 @@ struct QuoteEmailComposer: View {
         self.existing = existing
         self.linkWarning = linkWarning
         self.onSent = onSent
+        let stored = (existing?.files ?? []).sorted { $0.createdAt < $1.createdAt }.map(MailFileDraft.init)
+        _files = State(initialValue: stored)
         if let existing {
             _recipient = State(initialValue: existing.recipient)
             _subject = State(initialValue: existing.subject)
@@ -117,9 +122,11 @@ struct QuoteEmailComposer: View {
                 subject: QuoteMailMerge.fill(subject, quote: quote),
                 bodyText: QuoteMailMerge.fill(bodyText, quote: quote),
                 payURL: QuoteMailMerge.payURL(for: quote),
-                includesAgreement: attachAgreement && quote.hasAgreement
+                includesAgreement: attachAgreement && quote.hasAgreement,
+                extraNames: files.map(\.fileName)
             )
         }
+        .mailFileImporter(isPresented: $importingFiles, files: $files, error: $fileError)
         .onChange(of: templatePick) { previous, next in
             guard !suppressPick else {
                 suppressPick = false
@@ -285,6 +292,7 @@ struct QuoteEmailComposer: View {
                 Toggle("Agreement PDF", isOn: $attachAgreement)
                     .font(.callout)
             }
+            MailFilesEditor(files: $files) { importingFiles = true }
             StudioLabeledStack {
                 StudioLabeledRow("Pay link") {
                     Text(payLinkLine)
@@ -292,7 +300,7 @@ struct QuoteEmailComposer: View {
                         .font(.callout)
                 }
             }
-            Text("The quote PDF is the proposal. The agreement, when it’s on, goes as its own PDF. The pay link is in the letter.")
+            Text("The quote PDF is the proposal. The agreement, when it’s on, goes as its own PDF. Added files go with them. The pay link is in the letter.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -410,7 +418,8 @@ struct QuoteEmailComposer: View {
             replyTo: replyTo,
             subject: subject.trimmingCharacters(in: .whitespacesAndNewlines),
             body: bodyText,
-            attachAgreement: attachAgreement && quote.hasAgreement
+            attachAgreement: attachAgreement && quote.hasAgreement,
+            extras: files
         )
         guard result.didLeaveTheMac else {
             sendError = result.note
@@ -453,6 +462,7 @@ struct QuoteEmailComposer: View {
         } else if record.state != .sent {
             record.state = .draft
         }
+        MailAttachmentSync.apply(files, quote: record, invoice: nil, in: modelContext)
         return record
     }
 }

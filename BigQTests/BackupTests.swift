@@ -339,7 +339,23 @@ struct BackupTests {
             amount: 600
         )
         term.quote = quote
-        for model in [studio, contact, job, jobTerm, catalog, invoice, quote, line, term] as [any PersistentModel] {
+        let groom = Contact(fullName: "Charles Babbage", email: "charles@north.test", createdAt: when)
+        job.bride = contact
+        job.groom = groom
+        let quoteKey = QuoteMailKey.ensure(for: quote)
+        let letter = QuoteEmail(
+            quoteKey: quoteKey,
+            recipient: "ada@north.test",
+            subject: "Your quote",
+            body: "Hello Ada",
+            templateName: "Proposal"
+        )
+        letter.state = .sent
+        letter.sentAt = when
+        letter.payURL = "https://bigq-pay.web.app/pay/abc"
+        letter.postmarkMessageID = "pm-1"
+        let mailTemplate = EmailTemplate(name: "Proposal", subject: "Quote [Quote Number]", body: "Dear [Client Name]")
+        for model in [studio, contact, groom, job, jobTerm, catalog, invoice, quote, line, term, letter, mailTemplate] as [any PersistentModel] {
             context.insert(model)
         }
         try context.save()
@@ -376,6 +392,17 @@ struct BackupTests {
         #expect(jobs.first?.paymentScheduleModeRaw == QuotePaymentScheduleMode.scheduled.rawValue)
         #expect(jobs.first?.paymentTerms.first?.title == "Retainer")
         #expect(jobs.first?.paymentTerms.first?.percent == 50)
+        #expect(jobs.first?.bride?.email == "ada@north.test")
+        #expect(jobs.first?.groom?.fullName == "Charles Babbage")
+        let letters = try destination.mainContext.fetch(FetchDescriptor<QuoteEmail>())
+        #expect(letters.count == 1)
+        #expect(letters.first?.subject == "Your quote")
+        #expect(letters.first?.body == "Hello Ada")
+        #expect(letters.first?.postmarkMessageID == "pm-1")
+        #expect(letters.first?.quoteKey == restored.archiveID)
+        let mailTemplates = try destination.mainContext.fetch(FetchDescriptor<EmailTemplate>())
+        #expect(mailTemplates.count == 1)
+        #expect(mailTemplates.first?.body == "Dear [Client Name]")
     }
 
     @Test func mergeUpdatesQuotesAndTemplatesThatDoNotShareArchiveIDs() throws {
@@ -386,9 +413,13 @@ struct BackupTests {
         quote.payToken = "quote-pay"
         quote.convertedInvoice = invoice
         let template = Contract(title: "Wedding Agreement", html: "<p>Template</p>", isTemplate: true)
+        let letter = QuoteEmail(quoteKey: QuoteMailKey.ensure(for: quote), subject: "Hello", body: "Terms enclosed")
+        let saved = EmailTemplate(name: "Proposal", subject: "Hi", body: "Body")
         sourceContext.insert(invoice)
         sourceContext.insert(quote)
         sourceContext.insert(template)
+        sourceContext.insert(letter)
+        sourceContext.insert(saved)
         try sourceContext.save()
 
         let folder = temporaryPackage()
@@ -404,10 +435,12 @@ struct BackupTests {
         let localTemplate = Contract(title: "Wedding Agreement", html: "old", isTemplate: true)
         localTemplate.archiveID = "local-template"
         let kept = Quote(number: "LOCAL", total: 5)
+        let localMail = EmailTemplate(name: "Proposal", subject: "old", body: "old")
         context.insert(localInvoice)
         context.insert(localQuote)
         context.insert(localTemplate)
         context.insert(kept)
+        context.insert(localMail)
         try context.save()
 
         let payload = try BackupPackage.load(at: folder)
@@ -427,6 +460,62 @@ struct BackupTests {
         #expect(contracts.count == 1)
         #expect(contracts.first?.html == "<p>Template</p>")
         #expect(contracts.first?.archiveID == "local-template")
+        let letters = try context.fetch(FetchDescriptor<QuoteEmail>())
+        #expect(letters.count == 1)
+        #expect(letters.first?.quoteKey == "local-quote")
+        #expect(letters.first?.body == "Terms enclosed")
+        let mailTemplates = try context.fetch(FetchDescriptor<EmailTemplate>())
+        #expect(mailTemplates.count == 1)
+        #expect(mailTemplates.first?.body == "Body")
+    }
+
+    @Test func invoiceLettersAndAttachmentsRoundTrip() throws {
+        let source = try makeContainer()
+        let context = source.mainContext
+        let invoice = Invoice(number: "1042", total: 100, balance: 80, billToName: "Ada Lovelace")
+        let quote = Quote(number: "Q-1", total: 100, billToName: "Ada Lovelace")
+        let invoiceLetter = InvoiceEmail(
+            invoiceKey: InvoiceMailKey.ensure(for: invoice),
+            recipient: "ada@north.test",
+            subject: "Invoice 1042",
+            body: "Please pay"
+        )
+        let quoteLetter = QuoteEmail(
+            quoteKey: QuoteMailKey.ensure(for: quote),
+            subject: "Your quote",
+            body: "Hello"
+        )
+        let invoiceFile = MailAttachment(fileName: "notes.pdf", contentType: "application/pdf", bytes: Data("pdf-bytes".utf8))
+        invoiceFile.invoiceEmail = invoiceLetter
+        let quoteFile = MailAttachment(fileName: "extra.jpg", contentType: "image/jpeg", bytes: Data("jpg".utf8))
+        quoteFile.quoteEmail = quoteLetter
+        for model in [invoice, quote, invoiceLetter, quoteLetter, invoiceFile, quoteFile] as [any PersistentModel] {
+            context.insert(model)
+        }
+        try context.save()
+
+        let folder = temporaryPackage()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        _ = try BackupExport.write(context: context, scope: .full, defaults: isolatedDefaults(), to: folder)
+
+        let destination = try makeContainer()
+        let payload = try BackupPackage.load(at: folder)
+        _ = try BackupRestore.apply(payload, mode: .replace, context: destination.mainContext, defaults: isolatedDefaults())
+
+        let letters = try destination.mainContext.fetch(FetchDescriptor<InvoiceEmail>())
+        let restoredLetter = try #require(letters.first)
+        #expect(restoredLetter.subject == "Invoice 1042")
+        #expect(restoredLetter.body == "Please pay")
+        #expect(restoredLetter.files.count == 1)
+        #expect(restoredLetter.files.first?.fileName == "notes.pdf")
+        #expect(restoredLetter.files.first?.bytes == Data("pdf-bytes".utf8))
+        let restoredInvoice = try #require(try destination.mainContext.fetch(FetchDescriptor<Invoice>()).first)
+        #expect(restoredLetter.invoiceKey == restoredInvoice.archiveID)
+
+        let quoteLetters = try destination.mainContext.fetch(FetchDescriptor<QuoteEmail>())
+        let restoredQuoteLetter = try #require(quoteLetters.first { $0.subject == "Your quote" })
+        #expect(restoredQuoteLetter.files.count == 1)
+        #expect(restoredQuoteLetter.files.first?.bytes == Data("jpg".utf8))
     }
 
     @Test func catalogReplaceRelinksQuoteLines() throws {
@@ -482,7 +571,7 @@ struct BackupTests {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(versionedSchema: StudioSchemaV14.self)
+        let schema = Schema(versionedSchema: StudioSchemaV17.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [configuration])
     }

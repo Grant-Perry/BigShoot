@@ -1943,6 +1943,76 @@ struct BigQTests {
         #expect(QuoteMailMerge.fill("Hello [First+First Couple],", quote: quote) == "Hello Cindy + Brent,")
     }
 
+    @Test func invoiceLetterFillsTheBalanceAndPayLink() throws {
+        let container = try makeBooksContainer()
+        let context = container.mainContext
+        let studio = StudioBrand(name: "Grant & Deb Photographers", email: "studio@grantdeb.com")
+        let job = Job(name: "Sierra Wedding")
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        let invoice = Invoice(
+            number: "1042",
+            dueDate: due,
+            total: 500,
+            balance: 320,
+            billToName: "Frank Engel"
+        )
+        invoice.payToken = "invtoken"
+        context.insert(studio)
+        context.insert(job)
+        context.insert(invoice)
+        invoice.studio = studio
+        invoice.job = job
+
+        let body = InvoiceMailMerge.letter(for: invoice, reminder: false)
+        #expect(body.contains("Hello Frank Engel,"))
+        #expect(body.contains("invoice 1042"))
+        #expect(body.contains("Sierra Wedding"))
+        #expect(body.contains(StudioMoney.string(320)))
+        #expect(body.contains(StudioDay.string(due)))
+        #expect(body.contains(InvoiceMailMerge.payLinkPhrase))
+        #expect(!body.contains("http"))
+        let html = QuoteMailMerge.htmlLetter(
+            body,
+            payURL: InvoiceMailMerge.payURL(for: invoice),
+            phrase: InvoiceMailMerge.payLinkPhrase
+        )
+        #expect(html.contains("<a href=\"https://bigq-pay.web.app/pay/invtoken\">You can pay this invoice here</a>"))
+        let subject = InvoiceMailMerge.subject(for: invoice)
+        #expect(subject == "Invoice 1042 from Grant & Deb Photographers")
+        #expect(InvoiceMailMerge.fill(InvoiceMailMerge.templatize(body, invoice: invoice), invoice: invoice) == body)
+
+        let paid = Invoice(number: "9", total: 10, balance: 0, billToName: "Ada")
+        context.insert(paid)
+        let quiet = InvoiceMailMerge.letter(for: paid, reminder: false)
+        #expect(quiet.contains("no balance due"))
+        #expect(!quiet.contains(InvoiceMailMerge.payLinkPhrase))
+    }
+
+    @Test func mailFilesRejectBlockedTypes() {
+        #expect(MailFileName.safe("run.exe") == nil)
+        #expect(MailFileName.safe("page.html") == nil)
+        #expect(MailFileName.safe("My Photo.JPG") == "My Photo.jpg")
+        #expect(MailFileName.safe("contract.pdf") == "contract.pdf")
+        let oversized = MailFileImport.validated(
+            name: "photo.jpg",
+            contentType: "image/jpeg",
+            bytes: Data(count: MailFileLimits.maxFileBytes + 1),
+            existingCount: 0,
+            existingBytes: 0
+        )
+        if case .some = oversized {
+            Issue.record("An oversized file was accepted")
+        }
+        let accepted = MailFileImport.validated(
+            name: "contract.pdf",
+            contentType: "application/pdf",
+            bytes: Data("pdf".utf8),
+            existingCount: 0,
+            existingBytes: 0
+        )
+        #expect(accepted?.fileName == "contract.pdf")
+    }
+
     private func makeBooksContainer() throws -> ModelContainer {
         let schema = Schema(versionedSchema: StudioSchemaV7.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

@@ -19,7 +19,17 @@ enum InvoiceRemoval {
 
     static func remove(_ invoice: Invoice, in context: ModelContext) throws {
         BooksTrail.noteDeleted(invoice, in: context)
+        deleteEmails(for: invoice, in: context)
         context.delete(invoice)
         try context.save()
+    }
+
+    private static func deleteEmails(for invoice: Invoice, in context: ModelContext) {
+        let key = InvoiceMailKey.existing(for: invoice)
+        guard !key.isEmpty else { return }
+        let letters = (try? context.fetch(FetchDescriptor<InvoiceEmail>())) ?? []
+        for letter in letters where letter.invoiceKey == key {
+            context.delete(letter)
+        }
     }
 }

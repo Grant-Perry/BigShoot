@@ -11,8 +11,21 @@ final class PayLinkModel {
     var page: URL?
     private(set) var copied = false
 
-    func publish(_ invoice: Invoice, in context: ModelContext, replace: Bool = false) async {
-        await run(invoice, in: context, create: true, replace: replace)
+    func publish(
+        _ invoice: Invoice,
+        in context: ModelContext,
+        replace: Bool = false,
+        announce: Bool = true,
+        clientEmail: String? = nil
+    ) async {
+        await run(
+            invoice,
+            in: context,
+            create: true,
+            replace: replace,
+            announce: announce,
+            clientEmail: clientEmail
+        )
     }
 
     func refresh(_ invoice: Invoice, in context: ModelContext) async {
@@ -20,7 +33,14 @@ final class PayLinkModel {
         await run(invoice, in: context, create: false)
     }
 
-    private func run(_ invoice: Invoice, in context: ModelContext, create: Bool, replace: Bool = false) async {
+    private func run(
+        _ invoice: Invoice,
+        in context: ModelContext,
+        create: Bool,
+        replace: Bool = false,
+        announce: Bool = true,
+        clientEmail: String? = nil
+    ) async {
         if create { page = nil }
         guard !isWorking else { return }
         guard let studioKey = PayStudioKey.load() else {
@@ -46,7 +66,7 @@ final class PayLinkModel {
                     balance: PayMoney.wire(due.balance),
                     schedule: due.later,
                     billToName: invoice.clientName,
-                    clientEmail: invoice.contact?.email ?? invoice.job?.contact?.email ?? "",
+                    clientEmail: receiptAddress(clientEmail, invoice: invoice),
                     studioName: invoice.studio?.displayName ?? StudioBrand.defaultName,
                     replace: replace
                 )
@@ -59,10 +79,12 @@ final class PayLinkModel {
             try context.save()
             let applied = try record(snapshot, on: invoice, in: context)
             if create {
-                copy(snapshot.url)
-                let due = PayLinkAmount.forInvoice(invoice)
-                message = payLinkMessage(replaced: replace, kept: keptExisting, amount: due.amount)
-                if snapshot.isPaid { message = "Paid online." }
+                if announce {
+                    copy(snapshot.url)
+                    let due = PayLinkAmount.forInvoice(invoice)
+                    message = payLinkMessage(replaced: replace, kept: keptExisting, amount: due.amount)
+                    if snapshot.isPaid { message = "Paid online." }
+                }
                 return
             }
             if snapshot.isPaid {
@@ -160,6 +182,12 @@ final class PayLinkModel {
         } catch {
             message = error.localizedDescription
         }
+    }
+
+    private func receiptAddress(_ typed: String?, invoice: Invoice) -> String {
+        let cleaned = typed?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cleaned.isEmpty { return cleaned }
+        return invoice.contact?.email ?? invoice.job?.contact?.email ?? ""
     }
 
     private func ensureArchiveID(on quote: Quote, in context: ModelContext) -> String {

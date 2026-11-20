@@ -8,6 +8,7 @@ struct QuoteShare: Identifiable {
     let quote: Quote
     let pdfURL: URL
     let agreementURL: URL?
+    let extras: [StagedMailFile]
     let recipients: [String]
     let subject: String
     let body: String
@@ -17,24 +18,32 @@ struct QuoteShare: Identifiable {
     var items: [Any] {
         var values: [Any] = [linkedLetter, pdfURL]
         if let agreementURL { values.append(agreementURL) }
+        values.append(contentsOf: extras.map(\.url))
         return values
     }
 
     var fileURLs: [URL] {
-        [pdfURL, agreementURL].compactMap { $0 }
+        [pdfURL, agreementURL].compactMap { $0 } + extras.map(\.url)
+    }
+
+    var outboundFiles: [StudioMailDispatch.File] {
+        var files = [StudioMailDispatch.File(url: pdfURL, contentType: "application/pdf")]
+        if let agreementURL {
+            files.append(StudioMailDispatch.File(url: agreementURL, contentType: "application/pdf"))
+        }
+        files.append(contentsOf: extras.map {
+            StudioMailDispatch.File(url: $0.url, contentType: $0.contentType)
+        })
+        return files
     }
 
     /// Retainer phrase as a real link. The address stays on the next line for plain-text mail.
     private var linkedLetter: NSAttributedString {
-        let plain = QuoteMailMerge.plainText(body, quote: quote)
-        let letter = NSMutableAttributedString(string: plain)
-        let address = QuoteMailMerge.payURL(for: quote)
-        guard let url = URL(string: address), !address.isEmpty,
-              let range = plain.range(of: QuoteMailMerge.payLinkPhrase) else { return letter }
-        let nsRange = NSRange(range, in: plain)
-        letter.addAttribute(.link, value: url, range: nsRange)
-        letter.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
-        return letter
+        QuoteComposer.linkedLetter(
+            QuoteMailMerge.plainText(body, quote: quote),
+            phrase: QuoteMailMerge.payLinkPhrase,
+            urlString: QuoteMailMerge.payURL(for: quote)
+        )
     }
 }
 
@@ -76,7 +85,33 @@ enum QuoteComposer {
     /// - Another native app (Outlook): `.composeEmail` drops attachments for third-party apps, so the PDF is
     ///   opened in that app, which starts a draft with it attached, and the message text is copied.
     /// - A browser: a prefilled web-mail draft, with the PDF revealed in Finder to drag in.
+    static func linkedLetter(_ plain: String, phrase: String, urlString: String) -> NSAttributedString {
+        let letter = NSMutableAttributedString(string: plain)
+        guard let url = URL(string: urlString), !urlString.isEmpty,
+              let range = plain.range(of: phrase) else { return letter }
+        let nsRange = NSRange(range, in: plain)
+        letter.addAttribute(.link, value: url, range: nsRange)
+        letter.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: nsRange)
+        return letter
+    }
+
     static func email(_ share: QuoteShare) -> EmailOutcome {
+        email(
+            items: share.items,
+            fileURLs: share.fileURLs,
+            recipients: share.recipients,
+            subject: share.subject,
+            plainBody: QuoteMailMerge.plainText(share.body, quote: share.quote)
+        )
+    }
+
+    static func email(
+        items: [Any],
+        fileURLs: [URL],
+        recipients: [String],
+        subject: String,
+        plainBody: String
+    ) -> EmailOutcome {
         let app = defaultMailApp
         let bundleID = app.flatMap { Bundle(url: $0)?.bundleIdentifier?.lowercased() } ?? ""
 
@@ -84,37 +119,36 @@ enum QuoteComposer {
         // and for anything else (Outlook) it drops the attachment and body and cuts the subject at "&".
         if bundleID == "com.apple.mail",
            let service = NSSharingService(named: .composeEmail),
-           service.canPerform(withItems: share.items) {
-            service.recipients = share.recipients
-            service.subject = share.subject
+           service.canPerform(withItems: items) {
+            service.recipients = recipients
+            service.subject = subject
             service.delegate = serviceKeeper
             activeService = service
-            service.perform(withItems: share.items)
+            service.perform(withItems: items)
             return .composed
         }
 
         let pasteboard = NSPasteboard.general
         if let app, !browserFragments.contains(where: { bundleID.contains($0) }) {
             pasteboard.clearContents()
-            pasteboard.setString(QuoteMailMerge.plainText(share.body, quote: share.quote), forType: .string)
-            NSWorkspace.shared.open(share.fileURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+            pasteboard.setString(plainBody, forType: .string)
+            NSWorkspace.shared.open(fileURLs, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
             let name = FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
             return .attachedInApp(name)
         }
 
-        NSWorkspace.shared.activateFileViewerSelecting(share.fileURLs)
+        NSWorkspace.shared.activateFileViewerSelecting(fileURLs)
         pasteboard.clearContents()
-        pasteboard.writeObjects(share.fileURLs.map { $0 as NSURL })
+        pasteboard.writeObjects(fileURLs.map { $0 as NSURL })
 
         var components = URLComponents()
         components.scheme = "mailto"
-        components.path = share.recipients.joined(separator: ",")
+        components.path = recipients.joined(separator: ",")
         // Encode "&" and "+" too, so "Grant & Deb" doesn't end the subject early.
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "&+=?")
         func encode(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value }
-        let mailBody = QuoteMailMerge.plainText(share.body, quote: share.quote)
-        components.percentEncodedQuery = "subject=\(encode(share.subject))&body=\(encode(mailBody))"
+        components.percentEncodedQuery = "subject=\(encode(subject))&body=\(encode(plainBody))"
         if let url = components.url { NSWorkspace.shared.open(url) }
         return .manualAttach
     }
@@ -125,9 +159,9 @@ enum QuoteComposer {
         recipients: [String],
         subject: String,
         body: String,
-        attachAgreement: Bool
+        attachAgreement: Bool,
+        extras: [MailFileDraft] = []
     ) -> QuoteShare? {
-        let safeNumber = Self.fileToken(quote.displayNumber)
         let directory = FileManager.default.temporaryDirectory
         let quoteURL = directory.appendingPathComponent(Self.attachmentName(quote: quote, role: "Quote"))
         do {
@@ -149,10 +183,12 @@ enum QuoteComposer {
             }
         }
 
+        guard let staged = MailFileStaging.write(extras, to: directory) else { return nil }
         return QuoteShare(
             quote: quote,
             pdfURL: quoteURL,
             agreementURL: agreementURL,
+            extras: staged,
             recipients: recipients,
             subject: subject,
             body: body

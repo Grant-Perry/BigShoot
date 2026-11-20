@@ -42,6 +42,8 @@ struct InvoiceWorkspace: View {
     @State private var previewInvoice: Invoice?
     @State private var editingInvoice: Invoice?
     @State private var mailNote: String?
+    @State private var mailSession: InvoiceMailSession?
+    @State private var invoicePayLink = PayLinkModel()
     @State private var deletePrompt: DeletePrompt?
     @State private var booksError: String?
     @State private var showTrail = false
@@ -72,7 +74,10 @@ struct InvoiceWorkspace: View {
                         invoice: selected,
                         onRecordPayment: { paymentInvoice = selected },
                         onPreview: { previewInvoice = selected },
-                        onRemind: { remind(selected) },
+                        onSend: { send(selected) },
+                        onOpenEmail: { email in
+                            mailSession = InvoiceMailSession(invoice: selected, existing: email)
+                        },
                         onEdit: { editingInvoice = selected },
                         onMarkSent: { markSent(selected) },
                         onDelete: { askToDelete(selected) }
@@ -93,6 +98,14 @@ struct InvoiceWorkspace: View {
         }
         .sheet(item: $paymentInvoice) { invoice in
             RecordPaymentSheet(invoice: invoice)
+        }
+        .sheet(item: $mailSession) { session in
+            InvoiceEmailComposer(
+                invoice: session.invoice,
+                existing: session.existing,
+                linkWarning: session.linkWarning,
+                onSent: { mailNote = $0 }
+            )
         }
         .sheet(item: $previewInvoice) { invoice in
             InvoicePDFPreviewSheet(invoice: invoice, note: nil) {
@@ -156,7 +169,7 @@ struct InvoiceWorkspace: View {
                             onRecordPayment: { begin(invoice) { paymentInvoice = invoice } },
                             onEdit: { begin(invoice) { editingInvoice = invoice } },
                             onPreview: { begin(invoice) { previewInvoice = invoice } },
-                            onRemind: { begin(invoice) { remind(invoice) } },
+                            onSend: { begin(invoice) { send(invoice) } },
                             onMarkSent: { begin(invoice) { markSent(invoice) } },
                             onDelete: { begin(invoice) { askToDelete(invoice) } }
                         )
@@ -235,19 +248,28 @@ struct InvoiceWorkspace: View {
         }
     }
 
-    private func remind(_ invoice: Invoice) {
-        if invoice.remindersDisabled {
-            mailNote = "Reminders are turned off for this invoice. You can still preview the PDF."
-            previewInvoice = invoice
+    private func send(_ invoice: Invoice) {
+        Task { await openMail(invoice) }
+    }
+
+    private func openMail(_ invoice: Invoice) async {
+        do {
+            if invoice.number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                invoice.number = InvoiceMath.nextNumber(among: invoices.map(\.number))
+                try modelContext.save()
+            }
+        } catch {
+            mailNote = error.localizedDescription
             return
         }
-        switch ReminderComposer.compose(invoice: invoice) {
-        case .composed:
-            break
-        case .unavailable:
-            mailNote = "Mail isn’t available. Save the PDF and send it yourself."
-            previewInvoice = invoice
+        var warning: String?
+        if invoice.payToken.isEmpty, invoice.balance > 0 {
+            await invoicePayLink.publish(invoice, in: modelContext, announce: false)
+            if invoice.payToken.isEmpty {
+                warning = invoicePayLink.message
+            }
         }
+        mailSession = InvoiceMailSession(invoice: invoice, existing: nil, linkWarning: warning)
     }
 
     private func submit(_ invoice: Invoice) {

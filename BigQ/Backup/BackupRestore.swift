@@ -52,6 +52,9 @@ enum BackupRestore {
             try context.save()
             try addInvoiceChildren(invoices, catalog: catalog, context: context)
             try addQuoteChildren(quotes, catalog: catalog, context: context)
+            try upsertQuoteEmails(payload.file.quoteEmails, quotes: quotes, media: payload.media, context: context)
+            try upsertInvoiceEmails(payload.file.invoiceEmails, invoices: invoices, media: payload.media, context: context)
+            try upsertEmailTemplates(payload.file.emailTemplates, context: context)
             addSignatures(contracts, contacts: contacts, context: context)
             if !studios.primary.isEmpty {
                 try enforcePrimary(studios.primary, context: context)
@@ -81,6 +84,10 @@ enum BackupRestore {
     private static func delete(scope: BackupScope, context: ModelContext) throws {
         if scope.includesBooks {
             try wipe(BooksEvent.self, context)
+            try wipe(MailAttachment.self, context)
+            try wipe(InvoiceEmail.self, context)
+            try wipe(QuoteEmail.self, context)
+            try wipe(EmailTemplate.self, context)
             try wipe(Contract.self, context)
             try wipe(Quote.self, context)
             try wipe(Invoice.self, context)
@@ -841,6 +848,150 @@ enum BackupRestore {
                 receipt.invoice = item.invoice
                 context.insert(receipt)
             }
+        }
+    }
+
+    private static func upsertQuoteEmails(
+        _ records: [BackupFile.QuoteEmail],
+        quotes: [PendingQuote],
+        media: [String: Data],
+        context: ModelContext
+    ) throws {
+        var liveQuoteID: [String: String] = [:]
+        for item in quotes {
+            let live = item.quote.archiveID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !live.isEmpty else { continue }
+            liveQuoteID[live] = live
+            let filed = item.record.archiveID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !filed.isEmpty { liveQuoteID[filed] = live }
+        }
+        let locals = try context.fetch(FetchDescriptor<QuoteEmail>())
+        var used = Set<ObjectIdentifier>()
+        for record in records {
+            let quoteID = liveQuoteID[record.quoteID] ?? record.quoteID
+            let email: QuoteEmail
+            if let found = locals.first(where: { local in
+                !used.contains(ObjectIdentifier(local))
+                    && local.quoteKey == quoteID
+                    && local.subject == record.subject
+                    && abs(local.createdAt.timeIntervalSince(record.createdAt)) < 1
+            }) {
+                email = found
+            } else {
+                email = QuoteEmail(quoteKey: quoteID)
+                context.insert(email)
+            }
+            used.insert(ObjectIdentifier(email))
+            email.quoteKey = quoteID
+            email.createdAt = record.createdAt
+            email.updatedAt = record.updatedAt
+            email.sentAt = record.sentAt
+            email.stateRaw = record.state
+            email.recipient = record.recipient
+            email.subject = record.subject
+            email.body = record.body
+            email.templateName = record.templateName
+            email.attachAgreement = record.attachAgreement
+            email.payURL = record.payURL
+            email.postmarkMessageID = record.postmarkMessageID
+            if let attachments = record.attachments {
+                replaceAttachments(attachments, quote: email, invoice: nil, media: media, context: context)
+            }
+        }
+    }
+
+    private static func upsertInvoiceEmails(
+        _ records: [BackupFile.InvoiceEmail],
+        invoices: [PendingInvoice],
+        media: [String: Data],
+        context: ModelContext
+    ) throws {
+        var liveInvoiceID: [String: String] = [:]
+        for item in invoices {
+            let live = item.invoice.archiveID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !live.isEmpty else { continue }
+            liveInvoiceID[live] = live
+            let filed = item.record.archiveID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !filed.isEmpty { liveInvoiceID[filed] = live }
+        }
+        let locals = try context.fetch(FetchDescriptor<InvoiceEmail>())
+        var used = Set<ObjectIdentifier>()
+        for record in records {
+            let invoiceID = liveInvoiceID[record.invoiceID] ?? record.invoiceID
+            let email: InvoiceEmail
+            if let found = locals.first(where: { local in
+                !used.contains(ObjectIdentifier(local))
+                    && local.invoiceKey == invoiceID
+                    && local.subject == record.subject
+                    && abs(local.createdAt.timeIntervalSince(record.createdAt)) < 1
+            }) {
+                email = found
+            } else {
+                email = InvoiceEmail(invoiceKey: invoiceID)
+                context.insert(email)
+            }
+            used.insert(ObjectIdentifier(email))
+            email.invoiceKey = invoiceID
+            email.createdAt = record.createdAt
+            email.updatedAt = record.updatedAt
+            email.sentAt = record.sentAt
+            email.stateRaw = record.state
+            email.recipient = record.recipient
+            email.subject = record.subject
+            email.body = record.body
+            email.templateName = record.templateName
+            email.payURL = record.payURL
+            email.postmarkMessageID = record.postmarkMessageID
+            if let attachments = record.attachments {
+                replaceAttachments(attachments, quote: nil, invoice: email, media: media, context: context)
+            }
+        }
+    }
+
+    private static func replaceAttachments(
+        _ records: [BackupFile.Attachment],
+        quote: QuoteEmail?,
+        invoice: InvoiceEmail?,
+        media: [String: Data],
+        context: ModelContext
+    ) {
+        let current = quote?.files ?? invoice?.files ?? []
+        for file in current {
+            context.delete(file)
+        }
+        for record in records {
+            guard let data = media[record.mediaFile], !data.isEmpty else { continue }
+            let file = MailAttachment(fileName: record.fileName, contentType: record.contentType, bytes: data)
+            file.quoteEmail = quote
+            file.invoiceEmail = invoice
+            context.insert(file)
+        }
+    }
+
+    private static func upsertEmailTemplates(
+        _ records: [BackupFile.EmailTemplate],
+        context: ModelContext
+    ) throws {
+        let locals = try context.fetch(FetchDescriptor<EmailTemplate>())
+        var used = Set<ObjectIdentifier>()
+        for record in records {
+            let template: EmailTemplate
+            let matches = locals.filter {
+                !used.contains(ObjectIdentifier($0))
+                    && $0.name.caseInsensitiveCompare(record.name) == .orderedSame
+            }
+            if matches.count == 1 {
+                template = matches[0]
+            } else {
+                template = EmailTemplate(name: record.name, subject: record.subject, body: record.body)
+                context.insert(template)
+            }
+            used.insert(ObjectIdentifier(template))
+            template.name = record.name
+            template.subject = record.subject
+            template.body = record.body
+            template.createdAt = record.createdAt
+            template.updatedAt = record.updatedAt
         }
     }
 

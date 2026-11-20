@@ -5,7 +5,7 @@ struct InvoiceContextMenu: View {
     var onRecordPayment: () -> Void
     var onEdit: () -> Void
     var onPreview: () -> Void
-    var onRemind: () -> Void
+    var onSend: () -> Void
     var onMarkSent: () -> Void
     var onDelete: () -> Void
 
@@ -24,8 +24,8 @@ struct InvoiceContextMenu: View {
         }
         Button("Preview PDF", systemImage: "doc.richtext", action: onPreview)
             .help("Preview the invoice PDF")
-        Button("Remind", systemImage: "envelope", action: onRemind)
-            .help("Email a reminder")
+        Button("Send Invoice", systemImage: "envelope", action: onSend)
+            .help("Email this invoice")
         Divider()
         Button("Delete Invoice", systemImage: "trash", role: .destructive, action: onDelete)
             .help("Delete this invoice")

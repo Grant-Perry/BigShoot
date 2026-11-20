@@ -23,6 +23,9 @@ final class QuoteEmail {
     /// Set when Postmark accepts the message. Empty when the letter was handed to Mail.
     var postmarkMessageID: String = ""
 
+    @Relationship(deleteRule: .cascade, inverse: \MailAttachment.quoteEmail)
+    var files: [MailAttachment] = []
+
     init(
         quoteKey: String,
         recipient: String = "",

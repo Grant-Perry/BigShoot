@@ -5,7 +5,8 @@ struct InvoiceDetailView: View {
     var invoice: Invoice
     var onRecordPayment: () -> Void
     var onPreview: () -> Void
-    var onRemind: () -> Void
+    var onSend: () -> Void
+    var onOpenEmail: (InvoiceEmail) -> Void
     var onEdit: () -> Void
     var onMarkSent: () -> Void
     var onDelete: () -> Void
@@ -25,6 +26,7 @@ struct InvoiceDetailView: View {
             VStack(alignment: .leading, spacing: StudioDesign.Spacing.section) {
                 header
                 InvoicePayLinkSection(invoice: invoice)
+                InvoiceEmailsSection(invoice: invoice, onOpen: onOpenEmail, onCompose: onSend)
                 billTo
                 lines
                 if !invoice.schedule.isEmpty { schedule }
@@ -55,7 +57,7 @@ struct InvoiceDetailView: View {
                 onRecordPayment: onRecordPayment,
                 onEdit: onEdit,
                 onPreview: onPreview,
-                onRemind: onRemind,
+                onSend: onSend,
                 onMarkSent: onMarkSent,
                 onDelete: onDelete
             )
@@ -96,8 +98,8 @@ struct InvoiceDetailView: View {
                     .help("Preview the invoice PDF")
             }
             ToolbarItem {
-                Button("Remind", systemImage: "envelope", action: onRemind)
-                    .help("Email a reminder")
+                Button("Send Invoice", systemImage: "envelope", action: onSend)
+                    .help("Email this invoice")
             }
             ToolbarItem {
                 Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
